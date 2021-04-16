@@ -11,7 +11,7 @@ const (
 )
 
 type starter interface {
-	Start(pollID int, voteType PollType, backend Backend) error
+	Start(pollID int, voteType PollType, backend BackendID) error
 }
 
 func handleStart(mux *http.ServeMux, start starter) {
@@ -24,7 +24,7 @@ func handleStart(mux *http.ServeMux, start starter) {
 }
 
 type stoper interface {
-	Stop(pollID int, w io.WriteCloser) error
+	Stop(pollID int, w io.Writer) error
 }
 
 func handleStop(mux *http.ServeMux, stop stoper) {
