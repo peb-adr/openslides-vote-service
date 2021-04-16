@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -31,8 +32,8 @@ func TestRun(t *testing.T) {
 			t.Errorf("Vote.Run retunred unexpected error: %v", err)
 		}
 
-		if log.LastMSG() != "Listen on 9013" {
-			t.Errorf("Expected listen on message")
+		if got := log.LastMSG(); got != "Listen on :9013" {
+			t.Errorf("Expected listen on message, got: %s", got)
 		}
 	})
 
@@ -50,8 +51,8 @@ func TestRun(t *testing.T) {
 			t.Errorf("Vote.Run retunred unexpected error: %v", err)
 		}
 
-		if log.LastMSG() != "Listen on 5000" {
-			t.Errorf("Expected listen on message")
+		if got := log.LastMSG(); got != "Listen on :5000" {
+			t.Errorf("Expected listen on message, got: %s", got)
 		}
 	})
 
@@ -81,6 +82,38 @@ func TestRun(t *testing.T) {
 		case <-done:
 		case <-timer.C:
 			t.Errorf("Server did not stop")
+		}
+
+		if runErr != nil {
+			t.Errorf("Vote.Run retunred unexpected error: %v", runErr)
+		}
+	})
+
+	t.Run("Registered handlers", func(t *testing.T) {
+		var runErr error
+		go func() {
+			// Use an individuel port because the default port could be used by other tests.
+			runErr = vote.Run(ctx, []string{"VOTE_PORT=5002"}, log.Printf)
+		}()
+
+		baseUrl := "http://localhost:5002"
+
+		for _, path := range []string{
+			"/internal/vote/start",
+			"/internal/vote/stop",
+			"/system/vote",
+			"/system/vote/health",
+		} {
+			t.Run(path, func(t *testing.T) {
+				resp, err := http.Get(baseUrl + path)
+				if err != nil {
+					t.Fatalf("Can not open connection: %v", err)
+				}
+
+				if resp.StatusCode == 404 {
+					t.Errorf("Got status %s", resp.Status)
+				}
+			})
 		}
 
 		if runErr != nil {

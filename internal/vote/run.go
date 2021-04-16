@@ -19,7 +19,13 @@ import (
 func Run(ctx context.Context, environment []string, log func(format string, v ...interface{})) error {
 	env := defaultEnv(environment)
 
+	service := &Vote{}
+
 	mux := http.NewServeMux()
+	handleStart(mux, service)
+	handleStop(mux, service)
+	handleVote(mux, service)
+	handleHealth(mux)
 
 	listenAddr := ":" + env["VOTE_PORT"]
 	srv := &http.Server{Addr: listenAddr, Handler: mux}
