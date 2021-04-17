@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -13,7 +15,7 @@ func main() {
 	ctx, cancel := interruptContext()
 	defer cancel()
 
-	if err := vote.Run(ctx, os.Environ(), log.Printf); err != nil {
+	if err := vote.Run(ctx, os.Environ(), secret, log.Printf); err != nil {
 		log.Printf("Error: %v", err)
 	}
 }
@@ -35,4 +37,18 @@ func interruptContext() (context.Context, context.CancelFunc) {
 		os.Exit(1)
 	}()
 	return ctx, cancel
+}
+
+func secret(name string) (string, error) {
+	f, err := os.Open("/run/secrets/" + name)
+	if err != nil {
+		return "", err
+	}
+
+	secret, err := io.ReadAll(f)
+	if err != nil {
+		return "", fmt.Errorf("reading `/run/secrets/%s`: %w", name, err)
+	}
+
+	return string(secret), nil
 }

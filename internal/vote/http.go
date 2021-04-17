@@ -54,7 +54,12 @@ type voter interface {
 	Vote(ctx context.Context, pollID, requestUser int, r io.Reader) error
 }
 
-func handleVote(mux *http.ServeMux, vote voter) {
+type authenticater interface {
+	Authenticate(http.ResponseWriter, *http.Request) (context.Context, error)
+	FromContext(context.Context) int
+}
+
+func handleVote(mux *http.ServeMux, vote voter, auth authenticater) {
 	// TODO: Get user-id
 	mux.HandleFunc(
 		httpPathExternal,

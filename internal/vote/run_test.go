@@ -21,7 +21,7 @@ func TestRun(t *testing.T) {
 	t.Run("Start Server with default port", func(t *testing.T) {
 		var err error
 		go func() {
-			err = vote.Run(ctx, []string{}, log.Printf)
+			err = vote.Run(ctx, []string{}, secret, log.Printf)
 		}()
 
 		if _, err := net.DialTimeout("tcp", "localhost:9013", 10*time.Millisecond); err != nil {
@@ -40,7 +40,7 @@ func TestRun(t *testing.T) {
 	t.Run("Start Server with given port", func(t *testing.T) {
 		var err error
 		go func() {
-			err = vote.Run(ctx, []string{"VOTE_PORT=5000"}, log.Printf)
+			err = vote.Run(ctx, []string{"VOTE_PORT=5000"}, secret, log.Printf)
 		}()
 
 		if _, err := net.DialTimeout("tcp", "localhost:5000", 10*time.Millisecond); err != nil {
@@ -62,7 +62,7 @@ func TestRun(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			// Use an individuel port because the default port could be used by other tests.
-			runErr = vote.Run(ctx, []string{"VOTE_PORT=5001"}, log.Printf)
+			runErr = vote.Run(ctx, []string{"VOTE_PORT=5001"}, secret, log.Printf)
 			close(done)
 		}()
 
@@ -93,7 +93,7 @@ func TestRun(t *testing.T) {
 		var runErr error
 		go func() {
 			// Use an individuel port because the default port could be used by other tests.
-			runErr = vote.Run(ctx, []string{"VOTE_PORT=5002"}, log.Printf)
+			runErr = vote.Run(ctx, []string{"VOTE_PORT=5002"}, secret, log.Printf)
 		}()
 
 		baseUrl := "http://localhost:5002"
@@ -140,4 +140,8 @@ func (l *testLog) LastMSG() string {
 	defer l.mu.Unlock()
 
 	return l.lastMSG
+}
+
+func secret(name string) (string, error) {
+	return "secret", nil
 }

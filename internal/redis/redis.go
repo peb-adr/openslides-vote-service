@@ -26,10 +26,14 @@ func (r *Redis) Start(ctx context.Context, pollID int, pollType int) error {
 	return errors.New("TODO")
 }
 
-// PollType returns the type of a poll. It is the value that was used to start
-// the poll.
-func (r *Redis) PollType(ctx context.Context, pollID int) (int, error) {
-	return 0, errors.New("TODO")
+// Config returs the config for a poll.
+func (r *Redis) Config(ctx context.Context, pollID int) ([]byte, error) {
+	return nil, errors.New("TODO")
+}
+
+// SetConfig saves the config for a poll.
+func (r *Redis) SetConfig(ctx context.Context, pollID int, config []byte) error {
+	return errors.New("TODO")
 }
 
 // Vote saves a vote in redis.

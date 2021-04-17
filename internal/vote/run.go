@@ -2,10 +2,18 @@ package vote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/OpenSlides/openslides-autoupdate-service/pkg/auth"
+	"github.com/OpenSlides/openslides-autoupdate-service/pkg/datastore"
+	messageBusRedis "github.com/OpenSlides/openslides-autoupdate-service/pkg/redis"
+	"github.com/OpenSlides/openslides-vote-service/internal/redis"
 )
+
+const authDebugKey = "auth-dev-key"
 
 // Run starts the http server.
 //
@@ -16,18 +24,43 @@ import (
 //
 // log messages are written with the function given in the argument log. It has
 // the signature from log.Printf().
-func Run(ctx context.Context, environment []string, log func(format string, v ...interface{})) error {
-	// TODO: Auth-Service
-	// TODO: Connect to Datastore
+func Run(ctx context.Context, environment []string, secret func(name string) (string, error), log func(format string, v ...interface{})) error {
 	env := defaultEnv(environment)
 
-	service := &Vote{}
+	errHandler := buildErrHandler(log)
+
+	messageBus, err := buildMessageBus(env, log)
+	if err != nil {
+		return fmt.Errorf("building message bus: %w", err)
+	}
+
+	ds, err := buildDatastore(env, messageBus, ctx.Done(), errHandler)
+	if err != nil {
+		return fmt.Errorf("building datastore: %w", err)
+	}
+
+	auth, err := buildAuth(
+		env,
+		secret,
+		messageBus,
+		ctx.Done(),
+		log,
+		errHandler,
+	)
+	if err != nil {
+		return fmt.Errorf("building auth: %w", err)
+	}
+
+	fastBackend := &redis.Redis{}
+	longBackend := &redis.Redis{} // TODO: Use postgres
+
+	service := New(fastBackend, longBackend, fastBackend, ds)
 
 	mux := http.NewServeMux()
 	handleCreate(mux, service)
 	handleStop(mux, service)
 	handleClear(mux, service)
-	handleVote(mux, service)
+	handleVote(mux, service, auth)
 	handleHealth(mux)
 
 	listenAddr := ":" + env["VOTE_PORT"]
@@ -60,6 +93,20 @@ func defaultEnv(environment []string) map[string]string {
 	env := map[string]string{
 		"VOTE_HOST": "",
 		"VOTE_PORT": "9013",
+
+		"DATASTORE_READER_HOST":     "localhost",
+		"DATASTORE_READER_PORT":     "9010",
+		"DATASTORE_READER_PROTOCOL": "http",
+
+		"AUTH":          "fake",
+		"AUTH_PROTOCOL": "http",
+		"AUTH_HOST":     "localhost",
+		"AUTH_PORT":     "9004",
+
+		"MESSAGING":        "fake",
+		"MESSAGE_BUS_HOST": "localhost",
+		"MESSAGE_BUS_PORT": "6379",
+		"REDIS_TEST_CONN":  "true",
 	}
 
 	for _, value := range environment {
@@ -71,4 +118,134 @@ func defaultEnv(environment []string) map[string]string {
 		env[parts[0]] = parts[1]
 	}
 	return env
+}
+
+func secret(name string, getSecret func(name string) (string, error), dev bool) (string, error) {
+	defaultSecrets := map[string]string{
+		"auth_token_key":  authDebugKey,
+		"auth_cookie_key": authDebugKey,
+	}
+
+	d, ok := defaultSecrets[name]
+	if !ok {
+		return "", fmt.Errorf("unknown secret %s", name)
+	}
+
+	s, err := getSecret(name)
+	if err != nil {
+		if !dev {
+			return "", fmt.Errorf("can not read secret %s: %w", s, err)
+		}
+		s = d
+	}
+	return s, nil
+}
+
+func buildErrHandler(log func(format string, v ...interface{})) func(err error) {
+	return func(err error) {
+		var closing interface {
+			Closing()
+		}
+		if !errors.As(err, &closing) {
+			log("Error: %v", err)
+		}
+	}
+}
+
+func buildDatastore(env map[string]string, receiver datastore.Updater, closed <-chan struct{}, errHandler func(error)) (*datastore.Datastore, error) {
+	protocol := env["DATASTORE_READER_PROTOCOL"]
+	host := env["DATASTORE_READER_HOST"]
+	port := env["DATASTORE_READER_PORT"]
+	url := protocol + "://" + host + ":" + port
+	return datastore.New(url, closed, errHandler, receiver), nil
+}
+
+// buildAuth returns the auth service needed by the http server.
+func buildAuth(
+	env map[string]string,
+	getSecret func(name string) (string, error),
+	receiver auth.LogoutEventer,
+	closed <-chan struct{},
+	log func(format string, v ...interface{}),
+	errHandler func(error),
+) (authenticater, error) {
+	method := env["AUTH"]
+	switch method {
+	case "ticket":
+		log("Auth Method: ticket")
+		tokenKey, err := secret("auth_token_key", getSecret, env["OPENSLIDES_DEVELOPMENT"] != "false")
+		if err != nil {
+			return nil, fmt.Errorf("getting token secret: %w", err)
+		}
+
+		cookieKey, err := secret("auth_cookie_key", getSecret, env["OPENSLIDES_DEVELOPMENT"] != "false")
+		if err != nil {
+			return nil, fmt.Errorf("getting cookie secret: %w", err)
+		}
+
+		if tokenKey == authDebugKey || cookieKey == authDebugKey {
+			log("Auth with debug key")
+		}
+
+		protocol := env["AUTH_PROTOCOL"]
+		host := env["AUTH_HOST"]
+		port := env["AUTH_PORT"]
+		url := protocol + "://" + host + ":" + port
+
+		log("Auth Service: %s", url)
+
+		return auth.New(url, receiver, closed, errHandler, []byte(tokenKey), []byte(cookieKey))
+
+	case "fake":
+		log("Auth Method: FakeAuth (User ID 1 for all requests)")
+		return authStub(1), nil
+
+	default:
+		return nil, fmt.Errorf("unknown auth method %s", method)
+	}
+}
+
+// authStub implements the authenticater interface. It allways returs the given
+// user id.
+type authStub int
+
+// Authenticate does nothing.
+func (a authStub) Authenticate(w http.ResponseWriter, r *http.Request) (context.Context, error) {
+	return r.Context(), nil
+}
+
+// FromContext returns the uid the object was initialiced with.
+func (a authStub) FromContext(ctx context.Context) int {
+	return int(a)
+}
+
+type messageBus interface {
+	datastore.Updater
+	auth.LogoutEventer
+}
+
+func buildMessageBus(env map[string]string, log func(format string, v ...interface{})) (messageBus, error) {
+	serviceName := env["MESSAGING"]
+	log("Messaging Service: %s", serviceName)
+
+	var conn messageBusRedis.Connection
+	switch serviceName {
+	case "redis":
+		redisAddress := env["MESSAGE_BUS_HOST"] + ":" + env["MESSAGE_BUS_PORT"]
+		c := messageBusRedis.NewConnection(redisAddress)
+		if env["REDIS_TEST_CONN"] == "true" {
+			if err := c.TestConn(); err != nil {
+				return nil, fmt.Errorf("connect to redis: %w", err)
+			}
+		}
+
+		conn = c
+
+	case "fake":
+		conn = messageBusRedis.BlockingConn{}
+	default:
+		return nil, fmt.Errorf("unknown messagin service %s", serviceName)
+	}
+
+	return &messageBusRedis.Redis{Conn: conn}, nil
 }

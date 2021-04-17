@@ -8,6 +8,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/OpenSlides/openslides-autoupdate-service/pkg/datastore"
 )
 
 // Vote holds the state of the service.
@@ -20,7 +22,7 @@ type Vote struct {
 }
 
 // New creates an initializes vote service.
-func New(fast, long Backend, config Configer) *Vote {
+func New(fast, long Backend, config Configer, ds datastore.Getter) *Vote {
 	return &Vote{
 		fastBackend: fast,
 		longBackend: long,
@@ -146,6 +148,11 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 	}
 
 	// TODO: Get UserID from vote and check that the user is allowed to vote.
+	//  * Get User vote weight
+	//  * Build VoteObject with 'requestUser', 'voteUser', 'value' and 'weight'
+	//  * Remove requestUser and voteUser in anonymous votes
+	//  * Check config users_activate_vote_weight and set weight to 1_000_000 if not set.
+	//  * Save vote_count
 	userID := 1
 
 	if err := backend.Vote(ctx, pollID, userID, vote.original); err != nil {

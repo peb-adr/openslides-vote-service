@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/OpenSlides/openslides-autoupdate-service/pkg/dsmock"
 	"github.com/OpenSlides/openslides-vote-service/internal/vote"
 )
 
@@ -18,8 +19,11 @@ const (
 )
 
 func TestVoteCreate(t *testing.T) {
+	closed := make(chan struct{})
+	defer close(closed)
+
 	backend := new(testBackend)
-	v := vote.New(backend, backend, backend)
+	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
 	t.Run("Unknown poll", func(t *testing.T) {
 		if err := v.Create(context.Background(), 1, strings.NewReader(validConfig1)); err != nil {
@@ -70,8 +74,11 @@ func TestVoteCreate(t *testing.T) {
 }
 
 func TestVoteCreateInvalid(t *testing.T) {
+	closed := make(chan struct{})
+	defer close(closed)
+
 	backend := new(testBackend)
-	v := vote.New(backend, backend, backend)
+	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
 	for _, tt := range []struct {
 		name   string
@@ -119,8 +126,11 @@ func TestVoteCreateInvalid(t *testing.T) {
 }
 
 func TestVoteStop(t *testing.T) {
+	closed := make(chan struct{})
+	defer close(closed)
+
 	backend := new(testBackend)
-	v := vote.New(backend, backend, backend)
+	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
 	t.Run("Unknown poll", func(t *testing.T) {
 		buf := new(bytes.Buffer)
@@ -167,8 +177,11 @@ func TestVoteStop(t *testing.T) {
 }
 
 func TestVoteClear(t *testing.T) {
+	closed := make(chan struct{})
+	defer close(closed)
+
 	backend := new(testBackend)
-	v := vote.New(backend, backend, backend)
+	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
 	backend.SetConfig(context.Background(), 1, nil)
 
@@ -183,8 +196,11 @@ func TestVoteClear(t *testing.T) {
 }
 
 func TestVoteVote(t *testing.T) {
+	closed := make(chan struct{})
+	defer close(closed)
+
 	backend := new(testBackend)
-	v := vote.New(backend, backend, backend)
+	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
 	t.Run("Unknown poll", func(t *testing.T) {
 		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{}`))
