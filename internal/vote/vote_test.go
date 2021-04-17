@@ -166,12 +166,28 @@ func TestVoteStop(t *testing.T) {
 	})
 }
 
+func TestVoteClear(t *testing.T) {
+	backend := new(testBackend)
+	v := vote.New(backend, backend, backend)
+
+	backend.SetConfig(context.Background(), 1, nil)
+
+	if err := v.Clear(context.Background(), 1); err != nil {
+		t.Fatalf("Clear returned unexpected error: %v", err)
+	}
+
+	_, ok := backend.config[1]
+	if ok {
+		t.Errorf("Clear did not remove the config")
+	}
+}
+
 func TestVoteVote(t *testing.T) {
 	backend := new(testBackend)
 	v := vote.New(backend, backend, backend)
 
 	t.Run("Unknown poll", func(t *testing.T) {
-		err := v.Vote(context.Background(), 1, strings.NewReader(`{}`))
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{}`))
 
 		var errTyped vote.TypeError
 		if !errors.As(err, &errTyped) {
@@ -183,12 +199,13 @@ func TestVoteVote(t *testing.T) {
 		}
 	})
 
-	t.Run("Invalid json", func(t *testing.T) {
-		if err := backend.SetConfig(context.Background(), 1, nil); err != nil {
-			t.Fatalf("Creating poll: %v", err)
-		}
+	// Create the poll.
+	if err := backend.SetConfig(context.Background(), 1, []byte(`{"content_object_id":"motion/1"}`)); err != nil {
+		t.Fatalf("Creating poll: %v", err)
+	}
 
-		err := v.Vote(context.Background(), 1, strings.NewReader(`{123`))
+	t.Run("Invalid json", func(t *testing.T) {
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{123`))
 
 		var errTyped vote.TypeError
 		if !errors.As(err, &errTyped) {
@@ -201,11 +218,7 @@ func TestVoteVote(t *testing.T) {
 	})
 
 	t.Run("Invalid format", func(t *testing.T) {
-		if err := backend.SetConfig(context.Background(), 1, nil); err != nil {
-			t.Fatalf("Creating poll: %v", err)
-		}
-
-		err := v.Vote(context.Background(), 1, strings.NewReader(`{}`))
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{}`))
 
 		var errTyped vote.TypeError
 		if !errors.As(err, &errTyped) {
@@ -215,14 +228,58 @@ func TestVoteVote(t *testing.T) {
 		if errTyped != vote.ErrInvalid {
 			t.Errorf("Got error type `%s`, expected `%s`", errTyped.Type(), vote.ErrInvalid.Type())
 		}
+
+		if len(backend.objects[1]) != 0 {
+			t.Fatalf("Vote did save the vote object")
+		}
 	})
 
-	t.Run("Valid motion data", func(t *testing.T) {
-		t.Fatalf("TODO: write test")
+	t.Run("Valid data", func(t *testing.T) {
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`"Y"`))
+		if err != nil {
+			t.Fatalf("Vote returned unexpected error: %v", err)
+		}
+
+		if len(backend.objects[1]) != 1 {
+			t.Fatalf("Vote did not save the vote object")
+		}
+
+		if got := string(backend.objects[1][0]); got != `"Y"` {
+			t.Fatalf("Vote saved `%s`, expected `\"Y\"`", got)
+		}
 	})
 
-	t.Run("Valid assignment data", func(t *testing.T) {
-		t.Fatalf("TODO: write test")
+	t.Run("User has voted", func(t *testing.T) {
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`"Y"`))
+		if err == nil {
+			t.Fatalf("Vote returned no error")
+		}
+
+		var errTyped vote.TypeError
+		if !errors.As(err, &errTyped) {
+			t.Fatalf("Vote() did not return an TypeError, got: %v", err)
+		}
+
+		if errTyped != vote.ErrDoubleVote {
+			t.Errorf("Got error type `%s`, expected `%s`", errTyped.Type(), vote.ErrDoubleVote.Type())
+		}
+	})
+
+	t.Run("Poll is stopped", func(t *testing.T) {
+		backend.stopped[1] = true
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`"Y"`))
+		if err == nil {
+			t.Fatalf("Vote returned no error")
+		}
+
+		var errTyped vote.TypeError
+		if !errors.As(err, &errTyped) {
+			t.Fatalf("Vote() did not return an TypeError, got: %v", err)
+		}
+
+		if errTyped != vote.ErrStopped {
+			t.Errorf("Got error type `%s`, expected `%s`", errTyped.Type(), vote.ErrStopped.Type())
+		}
 	})
 }
 
@@ -253,9 +310,13 @@ func (b *testBackend) SetConfig(ctx context.Context, pollID int, config []byte) 
 }
 
 func (b *testBackend) Config(ctx context.Context, pollID int) ([]byte, error) {
+	if b.config == nil {
+		return nil, doesNotExistError{fmt.Errorf("Does not exist")}
+	}
+
 	config, ok := b.config[pollID]
 	if !ok {
-		return nil, doesExistError{}
+		return nil, doesNotExistError{fmt.Errorf("Does not exist")}
 	}
 	return config, nil
 }
@@ -266,11 +327,11 @@ func (b *testBackend) Vote(ctx context.Context, pollID int, userID int, object [
 	}
 
 	if b.stopped[pollID] {
-		return fmt.Errorf("Poll is stopped")
+		return stoppedError{fmt.Errorf("Poll is stopped")}
 	}
 
 	if _, ok := b.voted[pollID][userID]; ok {
-		return fmt.Errorf("user has already voted")
+		return doupleVoteError{fmt.Errorf("user has already voted")}
 	}
 
 	b.voted[pollID][userID] = true
@@ -301,4 +362,16 @@ type doesNotExistError struct {
 	error
 }
 
-func (doesExistError) DoesNotExist() {}
+func (doesNotExistError) DoesNotExist() {}
+
+type doupleVoteError struct {
+	error
+}
+
+func (doupleVoteError) DoupleVote() {}
+
+type stoppedError struct {
+	error
+}
+
+func (stoppedError) Stopped() {}

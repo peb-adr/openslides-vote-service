@@ -51,10 +51,11 @@ func handleClear(mux *http.ServeMux, clear clearer) {
 }
 
 type voter interface {
-	Vote(ctx context.Context, pollID int, r io.Reader) error
+	Vote(ctx context.Context, pollID, requestUser int, r io.Reader) error
 }
 
 func handleVote(mux *http.ServeMux, vote voter) {
+	// TODO: Get user-id
 	mux.HandleFunc(
 		httpPathExternal,
 		func(w http.ResponseWriter, r *http.Request) {

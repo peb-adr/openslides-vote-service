@@ -17,6 +17,8 @@ import (
 // log messages are written with the function given in the argument log. It has
 // the signature from log.Printf().
 func Run(ctx context.Context, environment []string, log func(format string, v ...interface{})) error {
+	// TODO: Auth-Service
+	// TODO: Connect to Datastore
 	env := defaultEnv(environment)
 
 	service := &Vote{}

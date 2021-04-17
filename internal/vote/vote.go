@@ -59,6 +59,9 @@ func (v *Vote) Create(ctx context.Context, pollID int, configReader io.Reader) e
 }
 
 // Stop ends a poll.
+//
+// This method is idempotence. Many requests with the same pollID will return
+// the same data. Calling vote.Clear will stop this behavior.
 func (v *Vote) Stop(ctx context.Context, pollID int, w io.Writer) error {
 	decodedConfig, err := v.config.Config(ctx, pollID)
 	if err != nil {
@@ -98,18 +101,147 @@ func (v *Vote) Stop(ctx context.Context, pollID int, w io.Writer) error {
 
 // Clear removes all knowlage of a poll.
 func (v *Vote) Clear(ctx context.Context, pollID int) error {
-	// TODO:
-	//    * Clear poll in config and backend.
-	return errors.New("TODO")
+	if err := v.config.Clear(ctx, pollID); err != nil {
+		return fmt.Errorf("clearing the config: %w", err)
+	}
+
+	if err := v.fastBackend.Clear(ctx, pollID); err != nil {
+		return fmt.Errorf("clearing the config: %w", err)
+	}
+
+	if err := v.longBackend.Clear(ctx, pollID); err != nil {
+		return fmt.Errorf("clearing the config: %w", err)
+	}
+	return nil
 }
 
 // Vote validates and saves the vote.
-func (v *Vote) Vote(ctx context.Context, pollID int, r io.Reader) error {
-	// TODO:
-	//   * Read the config.
-	//   * Read and validate the input.
-	//   * Give the vote object to the backend. It checks, if the user has voted and that the vote is open.
-	return errors.New("TODO")
+func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) error {
+	decodedConfig, err := v.config.Config(ctx, pollID)
+	if err != nil {
+		var errDoesExist interface{ DoesNotExist() }
+		if errors.As(err, &errDoesExist) {
+			return ErrNotExists
+		}
+		return fmt.Errorf("fetchig config: %w", err)
+	}
+
+	config, err := PollConfigFromJSON(decodedConfig)
+	if err != nil {
+		return fmt.Errorf("decoding config: %w", err)
+	}
+
+	var vote voteData
+	if err := json.NewDecoder(r).Decode(&vote); err != nil {
+		return MessageError{ErrInvalid, fmt.Sprintf("invalid json: %v", err)}
+	}
+
+	if err := vote.validate(config); err != nil {
+		return fmt.Errorf("validating vote: %w", err)
+	}
+
+	backend := v.longBackend
+	if config.Backend == "fast" {
+		backend = v.fastBackend
+	}
+
+	// TODO: Get UserID from vote and check that the user is allowed to vote.
+	userID := 1
+
+	if err := backend.Vote(ctx, pollID, userID, vote.original); err != nil {
+		var errDoupleVote interface{ DoupleVote() }
+		if errors.As(err, &errDoupleVote) {
+			return ErrDoubleVote
+		}
+
+		var errNotOpen interface{ Stopped() }
+		if errors.As(err, &errNotOpen) {
+			return ErrStopped
+		}
+
+		return fmt.Errorf("save vote: %w", err)
+	}
+
+	return nil
+}
+
+// voteData is the data a user sends as his vote.
+type voteData struct {
+	str          string
+	optionAmount map[int]int
+	optionYNA    map[int]string
+
+	original json.RawMessage
+}
+
+func (v *voteData) MarshalJSON() ([]byte, error) {
+	return json.Marshal(v.original)
+}
+
+func (v *voteData) UnmarshalJSON(b []byte) error {
+	v.original = b
+
+	if err := json.Unmarshal(b, &v.str); err == nil {
+		// voteData is a string
+		return nil
+	}
+
+	if err := json.Unmarshal(b, &v.optionAmount); err == nil {
+		// voteData is option_id to amount
+		return nil
+	}
+
+	if err := json.Unmarshal(b, &v.optionYNA); err == nil {
+		// voteData is option_id to string
+		return nil
+	}
+
+	return fmt.Errorf("unknown poll data: %s", b)
+}
+
+func (v *voteData) validate(config *PollConfig) error {
+	if config.ContentObject.collection != "motion" {
+		return errors.New("TODO: Only motion-polls is supported yet")
+	}
+
+	if v.Type() != voteDataString {
+		return MessageError{ErrInvalid, "Data has to be a string."}
+	}
+
+	if v.str != "Y" && v.str != "N" && (v.str != "A" || config.Method == "YNA") {
+		return MessageError{ErrInvalid, "Data does not fit the poll method."}
+	}
+	return nil
+}
+
+const (
+	voteDataUnknown = iota
+	voteDataString
+	voteDataOptionAmount
+	voteDataOptionString
+)
+
+const (
+	pollMethodYN = iota
+	pollMethodYNA
+	pollMethodY
+	pollMethodN
+)
+
+func (v *voteData) Type() int {
+	if v.str != "" {
+		return voteDataString
+	}
+
+	if v.optionAmount != nil {
+		return voteDataOptionAmount
+	}
+
+	if v.optionYNA != nil {
+		return voteDataOptionString
+	}
+
+	return voteDataUnknown
 }
 
 // Configer gets and saves the config for a poll.
