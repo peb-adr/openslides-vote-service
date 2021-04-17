@@ -13,12 +13,18 @@ import (
 	"github.com/OpenSlides/openslides-vote-service/internal/vote"
 )
 
+const (
+	validConfig1 = `{"content_object_id":"motion/1"}`
+	validConfig2 = `{"content_object_id":"assignment/1"}`
+	invalidConig = `{"content_object_id":"unknown/1"}`
+)
+
 func TestVoteStart(t *testing.T) {
 	backend := new(testBackend)
 	v := vote.New(backend, backend, backend)
 
 	t.Run("Unknown poll", func(t *testing.T) {
-		if err := v.Start(1, vote.PollConfig{ContentObject: "motion/1"}); err != nil {
+		if err := v.Start(context.Background(), 1, strings.NewReader(validConfig1)); err != nil {
 			t.Errorf("Start returned unexpected error: %v", err)
 		}
 
@@ -27,13 +33,13 @@ func TestVoteStart(t *testing.T) {
 			t.Fatalf("Found invalid config in backend `%s`: %v", backend.config[1], err)
 		}
 
-		if gotConfig.ContentObject != "motion/1" {
-			t.Errorf("Start created poll content_object `%s`, expected `motion/1`", gotConfig.ContentObject)
+		if gotConfig.ContentObject.String() != "motion/1" {
+			t.Errorf("Start created poll content_object `%s`, expected `motion/1`", gotConfig.ContentObject.String())
 		}
 	})
 
 	t.Run("Known poll with same config", func(t *testing.T) {
-		if err := v.Start(1, vote.PollConfig{ContentObject: "motion/1"}); err != nil {
+		if err := v.Start(context.Background(), 1, strings.NewReader(validConfig1)); err != nil {
 			t.Errorf("Start returned unexpected error: %v", err)
 		}
 
@@ -42,13 +48,13 @@ func TestVoteStart(t *testing.T) {
 			t.Fatalf("Found invalid config in backend `%s`: %v", backend.config[1], err)
 		}
 
-		if gotConfig.ContentObject != "motion/1" {
-			t.Errorf("Start created poll content_object `%s`, expected `motion/1`", gotConfig.ContentObject)
+		if gotConfig.ContentObject.String() != "motion/1" {
+			t.Errorf("Start created poll content_object `%s`, expected `motion/1`", gotConfig.ContentObject.String())
 		}
 	})
 
 	t.Run("Known poll with different config", func(t *testing.T) {
-		err := v.Start(1, vote.PollConfig{ContentObject: "assignment/1"})
+		err := v.Start(context.Background(), 1, strings.NewReader(validConfig2))
 
 		if err == nil {
 			t.Fatalf("Start did not return an error, expected one.")
@@ -56,11 +62,45 @@ func TestVoteStart(t *testing.T) {
 
 		var errTyped vote.TypeError
 		if !errors.As(err, &errTyped) {
-			t.Fatalf("Start did not return an Typed error. Got : %v", err)
+			t.Fatalf("Start did not return an Typed error. Got: %v", err)
 		}
 
 		if errTyped != vote.ErrExists {
 			t.Fatalf("Got error of type `%s`, expected `errExists`", errTyped.Type())
+		}
+	})
+
+	t.Run("Invalid Config", func(t *testing.T) {
+		err := v.Start(context.Background(), 2, strings.NewReader(invalidConig))
+
+		if err == nil {
+			t.Fatalf("Start with invalid config did not return an error.")
+		}
+
+		var errTyped vote.TypeError
+		if !errors.As(err, &errTyped) {
+			t.Fatalf("Start did not return an Typed error. Got: %v", err)
+		}
+
+		if errTyped != vote.ErrInvalid {
+			t.Fatalf("Got error of type `%s`, expected `%s`", errTyped.Type(), vote.ErrInvalid.Type())
+		}
+	})
+
+	t.Run("Invalid JSON", func(t *testing.T) {
+		err := v.Start(context.Background(), 2, strings.NewReader(`{123`))
+
+		if err == nil {
+			t.Fatalf("Start with invalid config did not return an error.")
+		}
+
+		var errTyped vote.TypeError
+		if !errors.As(err, &errTyped) {
+			t.Fatalf("Start did not return an Typed error. Got: %v", err)
+		}
+
+		if errTyped != vote.ErrInvalid {
+			t.Fatalf("Got error of type `%s`, expected `%s`", errTyped.Type(), vote.ErrInvalid.Type())
 		}
 	})
 }
@@ -71,7 +111,7 @@ func TestVoteStop(t *testing.T) {
 
 	t.Run("Unknown poll", func(t *testing.T) {
 		buf := new(bytes.Buffer)
-		err := v.Stop(1, buf)
+		err := v.Stop(context.Background(), 1, buf)
 
 		var errTyped vote.TypeError
 		if !errors.As(err, &errTyped) {
@@ -98,7 +138,7 @@ func TestVoteStop(t *testing.T) {
 		}
 
 		buf := new(bytes.Buffer)
-		if err := v.Stop(1, buf); err != nil {
+		if err := v.Stop(context.Background(), 1, buf); err != nil {
 			t.Fatalf("Stop returned unexpected error: %v", err)
 		}
 
@@ -118,7 +158,7 @@ func TestVoteVote(t *testing.T) {
 	v := vote.New(backend, backend, backend)
 
 	t.Run("Unknown poll", func(t *testing.T) {
-		err := v.Vote(1, strings.NewReader(`{}`))
+		err := v.Vote(context.Background(), 1, strings.NewReader(`{}`))
 
 		var errTyped vote.TypeError
 		if !errors.As(err, &errTyped) {
@@ -135,15 +175,15 @@ func TestVoteVote(t *testing.T) {
 			t.Fatalf("Starting poll: %v", err)
 		}
 
-		err := v.Vote(1, strings.NewReader(`{123`))
+		err := v.Vote(context.Background(), 1, strings.NewReader(`{123`))
 
 		var errTyped vote.TypeError
 		if !errors.As(err, &errTyped) {
 			t.Fatalf("Vote() did not return an TypeError, got: %v", err)
 		}
 
-		if errTyped != vote.ErrVoteInvalid {
-			t.Errorf("Got error type `%s`, expected `%s`", errTyped.Type(), vote.ErrVoteInvalid.Type())
+		if errTyped != vote.ErrInvalid {
+			t.Errorf("Got error type `%s`, expected `%s`", errTyped.Type(), vote.ErrInvalid.Type())
 		}
 	})
 
@@ -152,15 +192,15 @@ func TestVoteVote(t *testing.T) {
 			t.Fatalf("Starting poll: %v", err)
 		}
 
-		err := v.Vote(1, strings.NewReader(`{}`))
+		err := v.Vote(context.Background(), 1, strings.NewReader(`{}`))
 
 		var errTyped vote.TypeError
 		if !errors.As(err, &errTyped) {
 			t.Fatalf("Vote() did not return an TypeError, got: %v", err)
 		}
 
-		if errTyped != vote.ErrVoteInvalid {
-			t.Errorf("Got error type `%s`, expected `%s`", errTyped.Type(), vote.ErrVoteInvalid.Type())
+		if errTyped != vote.ErrInvalid {
+			t.Errorf("Got error type `%s`, expected `%s`", errTyped.Type(), vote.ErrInvalid.Type())
 		}
 	})
 
@@ -195,6 +235,17 @@ func (b *testBackend) Start(ctx context.Context, pollID int) error {
 }
 
 func (b *testBackend) SetConfig(ctx context.Context, pollID int, config []byte) error {
+	if b.config == nil {
+		b.config = make(map[int][]byte)
+		b.voted = make(map[int]map[int]bool)
+		b.objects = make(map[int][][]byte)
+		b.stopped = make(map[int]bool)
+	}
+
+	if old, exists := b.config[pollID]; exists && !bytes.Equal(old, config) {
+		return doesExistError{fmt.Errorf("Does exist")}
+	}
+
 	b.config[pollID] = config
 	return nil
 }
@@ -237,3 +288,9 @@ func (b *testBackend) Clear(ctx context.Context, pollID int) error {
 	delete(b.stopped, pollID)
 	return nil
 }
+
+type doesExistError struct {
+	error
+}
+
+func (doesExistError) DoesExist() {}

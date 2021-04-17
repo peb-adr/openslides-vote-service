@@ -13,8 +13,8 @@ const (
 	// ErrNotExists happens when an operation is performed on an unknown poll.
 	ErrNotExists
 
-	// ErrVoteInvalid happens, when the vote data is invalid.
-	ErrVoteInvalid
+	// ErrInvalid happens, when the vote data is invalid.
+	ErrInvalid
 )
 
 // TypeError is an error that can happend in this API.
@@ -29,7 +29,7 @@ func (err TypeError) Type() string {
 	case ErrNotExists:
 		return "not-exist"
 
-	case ErrVoteInvalid:
+	case ErrInvalid:
 		return "invalid"
 
 	default:
@@ -46,8 +46,8 @@ func (err TypeError) Error() string {
 	case ErrNotExists:
 		msg = "Poll does not exist"
 
-	case ErrVoteInvalid:
-		msg = "The vote data is not valid"
+	case ErrInvalid:
+		msg = "The input data is invalid"
 
 	default:
 		msg = "Unknown error"

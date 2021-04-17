@@ -1,6 +1,7 @@
 package vote
 
 import (
+	"context"
 	"io"
 	"net/http"
 )
@@ -11,7 +12,7 @@ const (
 )
 
 type starter interface {
-	Start(pollID int, voteType PollConfig) error
+	Start(ctx context.Context, pollID int, config io.Reader) error
 }
 
 func handleStart(mux *http.ServeMux, start starter) {
@@ -24,7 +25,7 @@ func handleStart(mux *http.ServeMux, start starter) {
 }
 
 type stoper interface {
-	Stop(pollID int, w io.Writer) error
+	Stop(ctx context.Context, pollID int, w io.Writer) error
 }
 
 func handleStop(mux *http.ServeMux, stop stoper) {
@@ -37,7 +38,7 @@ func handleStop(mux *http.ServeMux, stop stoper) {
 }
 
 type voter interface {
-	Vote(pollID int, r io.Reader) error
+	Vote(ctx context.Context, pollID int, r io.Reader) error
 }
 
 func handleVote(mux *http.ServeMux, vote voter) {
