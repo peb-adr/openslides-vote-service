@@ -103,6 +103,10 @@ func TestVoteStart(t *testing.T) {
 			t.Fatalf("Got error of type `%s`, expected `%s`", errTyped.Type(), vote.ErrInvalid.Type())
 		}
 	})
+
+	t.Run("Start and stopped poll", func(t *testing.T) {
+		t.Fatalf("TODO: write test")
+	})
 }
 
 func TestVoteStop(t *testing.T) {
@@ -205,11 +209,11 @@ func TestVoteVote(t *testing.T) {
 	})
 
 	t.Run("Valid motion data", func(t *testing.T) {
-
+		t.Fatalf("TODO: write test")
 	})
 
 	t.Run("Valid assignment data", func(t *testing.T) {
-
+		t.Fatalf("TODO: write test")
 	})
 }
 

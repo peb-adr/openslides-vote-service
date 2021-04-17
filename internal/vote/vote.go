@@ -62,6 +62,13 @@ func (v *Vote) Stop(ctx context.Context, pollID int, w io.Writer) error {
 	return errors.New("TODO")
 }
 
+// Clear removes all knowlage of a poll.
+func (v *Vote) Clear(ctx context.Context, pollID int) error {
+	// TODO:
+	//    * Clear poll in config and backend.
+	return errors.New("TODO")
+}
+
 // Vote validates and saves the vote.
 func (v *Vote) Vote(ctx context.Context, pollID int, r io.Reader) error {
 	// TODO:

@@ -24,6 +24,7 @@ func Run(ctx context.Context, environment []string, log func(format string, v ..
 	mux := http.NewServeMux()
 	handleStart(mux, service)
 	handleStop(mux, service)
+	handleClear(mux, service)
 	handleVote(mux, service)
 	handleHealth(mux)
 

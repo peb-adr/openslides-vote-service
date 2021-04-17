@@ -101,6 +101,7 @@ func TestRun(t *testing.T) {
 		for _, path := range []string{
 			"/internal/vote/start",
 			"/internal/vote/stop",
+			"/internal/vote/clear",
 			"/system/vote",
 			"/system/vote/health",
 		} {
