@@ -12,19 +12,24 @@ import (
 type Vote struct {
 	fastBackend Backend
 	longBackend Backend
+	config      Configer
 }
 
 // New creates an initializes vote service.
-func New(fast, long Backend) *Vote {
+func New(fast, long Backend, config Configer) *Vote {
 	return &Vote{
 		fastBackend: fast,
 		longBackend: long,
+		config:      config,
 	}
 }
 
 // Start an electronic vote.
-func (v *Vote) Start(pollID int, config PollConfig, backend BackendID) error {
-	// TODO: Create the poll in the backend.
+func (v *Vote) Start(pollID int, config PollConfig) error {
+	// TODO:
+	//   * Read config and deside if fast or long poll.
+	//   * Save config. If config already exists with different Data, throw an error.
+	//   * Create poll in backend??? If not, remove start method from backend.
 	return errors.New("TODO")
 }
 
@@ -43,34 +48,23 @@ func (v *Vote) Vote(pollID int, r io.Reader) error {
 	return errors.New("TODO")
 }
 
+// Configer gets and saves the config for a poll.
+type Configer interface {
+	Config(ctx context.Context, pollID int) ([]byte, error)
+	SetConfig(ctx context.Context, pollID int, config []byte) error
+}
+
 // Backend is a storage for the poll options.
 type Backend interface {
-	Start(ctx context.Context, pollID int, config []byte) error
-	Config(ctx context.Context, pollID int) ([]byte, error)
+	Start(ctx context.Context, pollID int) error
 	Vote(ctx context.Context, pollID int, userID int, object []byte) error
 	Stop(ctx context.Context, pollID int) ([][]byte, error)
 	Clear(ctx context.Context, pollID int) error
 }
 
-// BackendID defines how to save the vote data.
-//
-// bFast is a backend that saves the user_id together with the vote_object. The
-// check, if the user has already voted is done in the database.
-//
-// bLong saves the user_ids as a sorted blob. The check, if the user has already
-// voted is done in the vote service.
-type BackendID int
-
-const (
-	// BFast represents a fast poll.
-	BFast BackendID = iota
-
-	// BLong respresents a long running poll.
-	BLong
-)
-
 // PollConfig is data needed to validate a vote.
 type PollConfig struct {
+	Backend       string `json:"backend"`
 	ContentObject string `json:"content_object_id"`
 
 	// On motion poll and assignment poll.

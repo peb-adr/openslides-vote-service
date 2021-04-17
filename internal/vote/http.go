@@ -11,7 +11,7 @@ const (
 )
 
 type starter interface {
-	Start(pollID int, voteType PollConfig, backend BackendID) error
+	Start(pollID int, voteType PollConfig) error
 }
 
 func handleStart(mux *http.ServeMux, start starter) {
