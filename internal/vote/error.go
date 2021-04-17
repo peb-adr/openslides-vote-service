@@ -3,8 +3,8 @@ package vote
 import "fmt"
 
 const (
-	// ErrUnknown should not happen.
-	ErrUnknown TypeError = iota
+	// ErrInternal should not happen.
+	ErrInternal TypeError = iota
 
 	// ErrExists happens, when start is called with an poll ID that already
 	// exists.
@@ -46,7 +46,7 @@ func (err TypeError) Type() string {
 		return "stopped"
 
 	default:
-		return "unknown"
+		return "internal"
 	}
 }
 
@@ -69,7 +69,7 @@ func (err TypeError) Error() string {
 		msg = "The vote is not open for votes"
 
 	default:
-		msg = "Unknown error"
+		msg = "Ups, something went wrong!"
 
 	}
 	return fmt.Sprintf(`{"error":"%s","msg":"%s"}`, err.Type(), msg)

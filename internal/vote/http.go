@@ -2,8 +2,11 @@ package vote
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 )
 
 const (
@@ -19,7 +22,21 @@ func handleCreate(mux *http.ServeMux, create creater) {
 	mux.HandleFunc(
 		httpPathInternal+"/create",
 		func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "TODO", 500)
+			if r.Method != "POST" {
+				http.Error(w, MessageError{ErrInvalid, "Only POST requests are allowed"}.Error(), 405)
+				return
+			}
+
+			pid, err := pollID(r)
+			if err != nil {
+				http.Error(w, MessageError{ErrInvalid, err.Error()}.Error(), 400)
+				return
+			}
+
+			if err := create.Create(r.Context(), pid, r.Body); err != nil {
+				handleError(w, err, true)
+				return
+			}
 		},
 	)
 }
@@ -76,4 +93,38 @@ func handleHealth(mux *http.ServeMux) {
 			http.Error(w, "TODO", 500)
 		},
 	)
+}
+
+func pollID(r *http.Request) (int, error) {
+	rawPid := r.URL.Query().Get("pid")
+	if rawPid == "" {
+		return 0, fmt.Errorf("no pid argument provided")
+	}
+
+	pid, err := strconv.Atoi(rawPid)
+	if err != nil {
+		return 0, fmt.Errorf("pid invalid. Expected int, got %s", rawPid)
+	}
+
+	return pid, nil
+}
+
+func handleError(w http.ResponseWriter, err error, internal bool) {
+	status := 400
+	var msg string
+
+	var errTyped TypeError
+	if errors.As(err, &errTyped) {
+		msg = errTyped.Error()
+	} else {
+		// Unknown error. Handle as 500er
+		status = 500
+		msg = ErrInternal.Error()
+		if internal {
+			msg = MessageError{ErrInternal, err.Error()}.Error()
+		}
+	}
+
+	w.WriteHeader(status)
+	fmt.Fprint(w, msg)
 }
