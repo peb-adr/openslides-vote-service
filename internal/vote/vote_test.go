@@ -3,6 +3,7 @@ package vote_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -16,13 +17,17 @@ func TestVoteStart(t *testing.T) {
 	backend := new(testBackend)
 	v := vote.New(backend, backend)
 
-	if err := v.Start(1, vote.TMotion, vote.BFast); err != nil {
+	if err := v.Start(1, vote.PollConfig{ContentObject: "motion/1"}, vote.BFast); err != nil {
 		t.Errorf("Start returned unexpected error: %v", err)
 	}
 
-	gotType := backend.pollTypes[1]
-	if gotType != 1 {
-		t.Errorf("Start created poll with ID %d, expected 1", gotType)
+	var gotConfig vote.PollConfig
+	if err := json.Unmarshal(backend.config[1], &gotConfig); err != nil {
+		t.Fatalf("Saved invalid config `%s`: %v", backend.config[1], err)
+	}
+
+	if gotConfig.ContentObject != "motion/1" {
+		t.Errorf("Start created poll content_object `%s`, expected `motion/1`", gotConfig.ContentObject)
 	}
 }
 
@@ -49,7 +54,7 @@ func TestVoteStop(t *testing.T) {
 	})
 
 	t.Run("Known poll", func(t *testing.T) {
-		if err := backend.Start(context.Background(), 1, int(vote.TMotion)); err != nil {
+		if err := backend.Start(context.Background(), 1, nil); err != nil {
 			t.Fatalf("Starting poll: %v", err)
 		}
 
@@ -92,7 +97,7 @@ func TestVoteVote(t *testing.T) {
 	})
 
 	t.Run("Invalid json", func(t *testing.T) {
-		if err := backend.Start(context.Background(), 1, int(vote.TMotion)); err != nil {
+		if err := backend.Start(context.Background(), 1, nil); err != nil {
 			t.Fatalf("Starting poll: %v", err)
 		}
 
@@ -109,7 +114,7 @@ func TestVoteVote(t *testing.T) {
 	})
 
 	t.Run("Invalid format", func(t *testing.T) {
-		if err := backend.Start(context.Background(), 1, int(vote.TMotion)); err != nil {
+		if err := backend.Start(context.Background(), 1, nil); err != nil {
 			t.Fatalf("Starting poll: %v", err)
 		}
 
@@ -138,39 +143,39 @@ func TestVoteVote(t *testing.T) {
 // testBackend is a simple (not concurent) vote backend that can be used for
 // testing.
 type testBackend struct {
-	pollTypes map[int]int
-	voted     map[int]map[int]bool
-	objects   map[int][][]byte
+	config  map[int][]byte
+	voted   map[int]map[int]bool
+	objects map[int][][]byte
+	stopped map[int]bool
 }
 
-func (b *testBackend) Start(ctx context.Context, pollID int, pollType int) error {
-	if b.pollTypes == nil {
-		b.pollTypes = make(map[int]int)
+func (b *testBackend) Start(ctx context.Context, pollID int, config []byte) error {
+	if b.config == nil {
+		b.config = make(map[int][]byte)
 		b.voted = make(map[int]map[int]bool)
 		b.objects = make(map[int][][]byte)
+		b.stopped = make(map[int]bool)
 	}
 
-	b.pollTypes[pollID] = pollType
+	b.config[pollID] = config
 	b.voted[pollID] = make(map[int]bool)
 	return nil
 }
 
-func (b *testBackend) PollType(ctx context.Context, pollID int) (int, error) {
-	t, ok := b.pollTypes[pollID]
+func (b *testBackend) Config(ctx context.Context, pollID int) ([]byte, error) {
+	config, ok := b.config[pollID]
 	if !ok {
-		return 0, fmt.Errorf("unknown poll with id %d", pollID)
+		return nil, fmt.Errorf("unknown poll with id %d", pollID)
 	}
-	return t, nil
+	return config, nil
 }
 
 func (b *testBackend) Vote(ctx context.Context, pollID int, userID int, object []byte) error {
-	t, ok := b.pollTypes[pollID]
-
-	if !ok {
+	if _, ok := b.config[pollID]; !ok {
 		return fmt.Errorf("unknown poll with id %d", pollID)
 	}
 
-	if t == 0 {
+	if b.stopped[pollID] {
 		return fmt.Errorf("Poll is stopped")
 	}
 
@@ -184,13 +189,14 @@ func (b *testBackend) Vote(ctx context.Context, pollID int, userID int, object [
 }
 
 func (b *testBackend) Stop(ctx context.Context, pollID int) ([][]byte, error) {
-	b.pollTypes[pollID] = 0
+	b.stopped[pollID] = true
 	return b.objects[pollID], nil
 }
 
 func (b *testBackend) Clear(ctx context.Context, pollID int) error {
-	delete(b.pollTypes, pollID)
+	delete(b.config, pollID)
 	delete(b.voted, pollID)
 	delete(b.objects, pollID)
+	delete(b.stopped, pollID)
 	return nil
 }

@@ -23,7 +23,7 @@ func New(fast, long Backend) *Vote {
 }
 
 // Start an electronic vote.
-func (v *Vote) Start(pollID int, voteType PollType, backend BackendID) error {
+func (v *Vote) Start(pollID int, config PollConfig, backend BackendID) error {
 	// TODO: Create the poll in the backend.
 	return errors.New("TODO")
 }
@@ -45,8 +45,8 @@ func (v *Vote) Vote(pollID int, r io.Reader) error {
 
 // Backend is a storage for the poll options.
 type Backend interface {
-	Start(ctx context.Context, pollID int, pollType int) error
-	PollType(ctx context.Context, pollID int) (int, error)
+	Start(ctx context.Context, pollID int, config []byte) error
+	Config(ctx context.Context, pollID int) ([]byte, error)
 	Vote(ctx context.Context, pollID int, userID int, object []byte) error
 	Stop(ctx context.Context, pollID int) ([][]byte, error)
 	Clear(ctx context.Context, pollID int) error
@@ -69,17 +69,24 @@ const (
 	BLong
 )
 
-// PollType defines if a vote is for a motion or an assignment. This is mainly
-// used for the validation.
-type PollType int
+// PollConfig is data needed to validate a vote.
+type PollConfig struct {
+	ContentObject string `json:"content_object_id"`
 
-const (
-	// TStopped is a value saying that a poll does not run anymore.
-	TStopped PollType = iota
+	// On motion poll and assignment poll.
+	Anonymous bool   `json:"is_pseudoanonymized"`
+	Method    string `json:"pollmethod"`
+	Groups    []int  `json:"entitled_group_ids"`
 
-	// TMotion is a motion poll.
-	TMotion
+	// Only on assignment poll.
+	GlobalYes     bool `json:"global_yes"`
+	GlobalNo      bool `json:"global_no"`
+	GlobalAbstain bool `json:"global_abstain"`
+	MultipleVotes bool `json:"multiple_votes"`
+	MinAmount     int  `json:"min_votes_amount"`
+	MaxAmount     int  `json:"max_votes_amount"`
+}
 
-	// TAssignment is an assignment poll.
-	TAssignment
-)
+func (p *PollConfig) validate() error {
+	return errors.New("TODO")
+}
