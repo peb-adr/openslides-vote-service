@@ -60,11 +60,12 @@ func (v *Vote) Create(ctx context.Context, pollID int, configReader io.Reader) e
 
 // Stop ends a poll.
 func (v *Vote) Stop(ctx context.Context, pollID int, w io.Writer) error {
-	// TODO:
-	//    * Read config to see if fast or long backend.
-	//    * Stop the poll in the backend, fetch the votes from the backend and write them to the writer.
 	decodedConfig, err := v.config.Config(ctx, pollID)
 	if err != nil {
+		var errDoesExist interface{ DoesNotExist() }
+		if errors.As(err, &errDoesExist) {
+			return ErrNotExists
+		}
 		return fmt.Errorf("fetchig config: %w", err)
 	}
 
@@ -73,14 +74,26 @@ func (v *Vote) Stop(ctx context.Context, pollID int, w io.Writer) error {
 		return fmt.Errorf("decoding config: %w", err)
 	}
 
-	var fast bool
+	backend := v.longBackend
 	if config.Backend == "fast" {
-		fast = true
+		backend = v.fastBackend
 	}
 
-	_ = fast
+	objects, err := backend.Stop(ctx, pollID)
+	if err != nil {
+		return fmt.Errorf("fetching poll objects: %w", err)
+	}
 
-	return errors.New("TODO")
+	encodableObjects := make([]json.RawMessage, len(objects))
+	for i := range objects {
+		encodableObjects[i] = objects[i]
+	}
+
+	if err := json.NewEncoder(w).Encode(encodableObjects); err != nil {
+		return fmt.Errorf("encoding and sending objects: %w", err)
+	}
+
+	return nil
 }
 
 // Clear removes all knowlage of a poll.
@@ -111,7 +124,6 @@ type Configer interface {
 
 // Backend is a storage for the poll options.
 type Backend interface {
-	Start(ctx context.Context, pollID int) error
 	Vote(ctx context.Context, pollID int, userID int, object []byte) error
 	Stop(ctx context.Context, pollID int) ([][]byte, error)
 	Clear(ctx context.Context, pollID int) error
@@ -138,7 +150,9 @@ type PollConfig struct {
 
 // PollConfigFromJSON creates a new PollConfig object from a json input.
 func PollConfigFromJSON(input []byte) (*PollConfig, error) {
-	return nil, errors.New("TODO")
+	var config PollConfig
+	json.Unmarshal(input, &config)
+	return &config, nil
 }
 
 func (p *PollConfig) validate() error {
