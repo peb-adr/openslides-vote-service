@@ -28,8 +28,12 @@ func New(fast, long Backend, config Configer) *Vote {
 	}
 }
 
-// Start an electronic vote.
-func (v *Vote) Start(ctx context.Context, pollID int, configReader io.Reader) error {
+// Create an electronic vote.
+//
+// This function is idempotence. If you call it with the same input, you will
+// get the same output. This means, that when a poll is stopped, Create() will
+// not throw an error.
+func (v *Vote) Create(ctx context.Context, pollID int, configReader io.Reader) error {
 	var config PollConfig
 	if err := json.NewDecoder(configReader).Decode(&config); err != nil {
 		return MessageError{ErrInvalid, fmt.Sprintf("PollConfig is invalid json: %v", err)}
@@ -59,6 +63,23 @@ func (v *Vote) Stop(ctx context.Context, pollID int, w io.Writer) error {
 	// TODO:
 	//    * Read config to see if fast or long backend.
 	//    * Stop the poll in the backend, fetch the votes from the backend and write them to the writer.
+	decodedConfig, err := v.config.Config(ctx, pollID)
+	if err != nil {
+		return fmt.Errorf("fetchig config: %w", err)
+	}
+
+	config, err := PollConfigFromJSON(decodedConfig)
+	if err != nil {
+		return fmt.Errorf("decoding config: %w", err)
+	}
+
+	var fast bool
+	if config.Backend == "fast" {
+		fast = true
+	}
+
+	_ = fast
+
 	return errors.New("TODO")
 }
 
@@ -124,6 +145,10 @@ func (p *PollConfig) validate() error {
 	// TODO: Implement all cases where the config is invalid.
 	if p.ContentObject.collection != "motion" && p.ContentObject.collection != "assignment" {
 		return MessageError{ErrInvalid, "poll config collection_object_id has to point to motion or assignment"}
+	}
+
+	if p.Backend != "fast" && p.Backend != "long" {
+		return MessageError{ErrInvalid, "poll config backend has to be fast or long"}
 	}
 	return nil
 }

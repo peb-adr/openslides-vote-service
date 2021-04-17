@@ -99,7 +99,7 @@ func TestRun(t *testing.T) {
 		baseUrl := "http://localhost:5002"
 
 		for _, path := range []string{
-			"/internal/vote/start",
+			"/internal/vote/create",
 			"/internal/vote/stop",
 			"/internal/vote/clear",
 			"/system/vote",

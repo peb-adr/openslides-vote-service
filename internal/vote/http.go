@@ -11,13 +11,13 @@ const (
 	httpPathExternal = "/system/vote"
 )
 
-type starter interface {
-	Start(ctx context.Context, pollID int, config io.Reader) error
+type creater interface {
+	Create(ctx context.Context, pollID int, config io.Reader) error
 }
 
-func handleStart(mux *http.ServeMux, start starter) {
+func handleCreate(mux *http.ServeMux, create creater) {
 	mux.HandleFunc(
-		httpPathInternal+"/start",
+		httpPathInternal+"/create",
 		func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "TODO", 500)
 		},
