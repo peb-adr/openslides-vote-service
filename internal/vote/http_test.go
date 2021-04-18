@@ -456,5 +456,22 @@ func TestHandleVote(t *testing.T) {
 			t.Errorf("Voter was called with body `%s` expected `request body`", voter.body)
 		}
 	})
+}
 
+func TestHandleHealth(t *testing.T) {
+	url := "/system/vote/health"
+	mux := http.NewServeMux()
+	handleHealth(mux)
+
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, httptest.NewRequest("GET", url, nil))
+
+	if resp.Result().StatusCode != 200 {
+		t.Errorf("Got status %s, expected 200 - OK", resp.Result().Status)
+	}
+
+	expect := `{"health":true}`
+	if got := resp.Body.String(); got != expect {
+		t.Errorf("Got body `%s`, expected `%s`", got, expect)
+	}
 }

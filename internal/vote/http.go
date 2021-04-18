@@ -143,7 +143,7 @@ func handleHealth(mux *http.ServeMux) {
 	mux.HandleFunc(
 		httpPathExternal+"/health",
 		func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "TODO", 500)
+			fmt.Fprintf(w, `{"health":true}`)
 		},
 	)
 }
