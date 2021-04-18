@@ -42,8 +42,8 @@ func New(addr string) *Redis {
 }
 
 // Wait blocks until a connection to redis can be established.
-func (r *Redis) Wait(log func(format string, a ...interface{})) {
-	for {
+func (r *Redis) Wait(ctx context.Context, log func(format string, a ...interface{})) {
+	for ctx.Err() == nil {
 		conn := r.pool.Get()
 		_, err := conn.Do("PING")
 		conn.Close()
@@ -71,6 +71,21 @@ func (r *Redis) Config(ctx context.Context, pollID int) ([]byte, error) {
 	return bs, nil
 }
 
+// luaSetConfigScript works like SETNX but it returns 1 (success) if the value
+// already has the value.
+const luaSetConfigScript = `
+local saved = redis.call("SETNX",KEYS[1],ARGV[1])
+if saved == 1 then
+	return 1
+end
+
+local old = redis.call("GET",KEYS[1])
+if old == ARGV[1] then
+	return 1
+end
+return 0
+`
+
 // SetConfig saves the config for a poll.
 func (r *Redis) SetConfig(ctx context.Context, pollID int, config []byte) error {
 	conn := r.pool.Get()
@@ -78,9 +93,12 @@ func (r *Redis) SetConfig(ctx context.Context, pollID int, config []byte) error 
 
 	key := fmt.Sprintf(keyConfig, pollID)
 
-	_, err := conn.Do("SET", key, config)
+	saved, err := redis.Bool(conn.Do("EVAL", luaSetConfigScript, 1, key, config))
 	if err != nil {
 		return fmt.Errorf("saving config to key %s: %w", key, err)
+	}
+	if !saved {
+		return doesExistError{}
 	}
 
 	return nil
@@ -88,8 +106,8 @@ func (r *Redis) SetConfig(ctx context.Context, pollID int, config []byte) error 
 
 // luaVoteScript checks for condition and saves a vote if all checks pass.
 //
-// KEY[1] == stop key
-// KEY[2] == vote data
+// KEYS[1] == stop key
+// KEYS[2] == vote data
 // ARGV[1] == userID
 // ARGV[2] == Vote object
 //
@@ -186,3 +204,11 @@ func (stoppedPollError) Error() string {
 }
 
 func (stoppedPollError) Stopped() {}
+
+type doesExistError struct{}
+
+func (doesExistError) Error() string {
+	return "poll does exist"
+}
+
+func (doesExistError) DoesExist() {}

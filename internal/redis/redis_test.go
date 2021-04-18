@@ -33,20 +33,42 @@ func TestConfig(t *testing.T) {
 	defer close()
 
 	r := redis.New("localhost:" + port)
-	r.Wait(nil)
+	r.Wait(context.Background(), nil)
 
-	if err := r.SetConfig(context.Background(), 1, []byte("my config")); err != nil {
-		t.Fatalf("SetConfig returned unexpected error: %v", err)
-	}
+	t.Run("First call", func(t *testing.T) {
+		if err := r.SetConfig(context.Background(), 1, []byte("my config")); err != nil {
+			t.Fatalf("SetConfig returned unexpected error: %v", err)
+		}
 
-	got, err := r.Config(context.Background(), 1)
-	if err != nil {
-		t.Fatalf("Config returned unexpected error: %v", err)
-	}
+		got, err := r.Config(context.Background(), 1)
+		if err != nil {
+			t.Fatalf("Config returned unexpected error: %v", err)
+		}
 
-	if string(got) != "my config" {
-		t.Errorf("Got config `%s`, expected `my config`", got)
-	}
+		if string(got) != "my config" {
+			t.Errorf("Got config `%s`, expected `my config`", got)
+		}
+	})
+
+	t.Run("Again same", func(t *testing.T) {
+		if err := r.SetConfig(context.Background(), 1, []byte("my config")); err != nil {
+			t.Fatalf("SetConfig returned unexpected error: %v", err)
+		}
+	})
+
+	t.Run("Again different data", func(t *testing.T) {
+		err := r.SetConfig(context.Background(), 1, []byte("my other config"))
+
+		if err == nil {
+			t.Fatalf("SetConfig with different data did not return an error")
+		}
+
+		var errDoesExist interface{ DoesExist() }
+		if !errors.As(err, &errDoesExist) {
+			t.Fatalf("SetConfig with different data has to return a error with method DoesExist. Got: %v", err)
+		}
+
+	})
 }
 
 func TestVote(t *testing.T) {
@@ -54,7 +76,7 @@ func TestVote(t *testing.T) {
 	defer close()
 
 	r := redis.New("localhost:" + port)
-	r.Wait(nil)
+	r.Wait(context.Background(), nil)
 
 	t.Run("Vote successfull", func(t *testing.T) {
 		if err := r.Vote(context.Background(), 1, 5, []byte("my vote")); err != nil {
@@ -115,7 +137,7 @@ func TestClear(t *testing.T) {
 	defer close()
 
 	r := redis.New("localhost:" + port)
-	r.Wait(nil)
+	r.Wait(context.Background(), nil)
 
 	if err := r.SetConfig(context.Background(), 1, []byte("my config")); err != nil {
 		t.Fatalf("SetConfig returned unexpected error: %v", err)

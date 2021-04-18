@@ -153,7 +153,7 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 	//  * Remove requestUser and voteUser in anonymous votes
 	//  * Check config users_activate_vote_weight and set weight to 1_000_000 if not set.
 	//  * Save vote_count
-	userID := 1
+	userID := requestUser
 
 	if err := backend.Vote(ctx, pollID, userID, vote.original); err != nil {
 		var errDoupleVote interface{ DoupleVote() }
