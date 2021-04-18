@@ -110,7 +110,7 @@ func defaultEnv(environment []string) map[string]string {
 	}
 
 	for _, value := range environment {
-		parts := strings.Split(value, "=")
+		parts := strings.SplitN(value, "=", 2)
 		if len(parts) != 2 {
 			panic(fmt.Sprintf("Invalid value from environment(): %s", value))
 		}
