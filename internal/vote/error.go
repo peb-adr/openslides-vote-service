@@ -16,9 +16,13 @@ const (
 	// ErrInvalid happens, when the vote data is invalid.
 	ErrInvalid
 
-	// ErrDoubleVote happen on a vote request, when the user tries to vote for a
+	// ErrDoubleVote happens on a vote request, when the user tries to vote for a
 	// second time.
 	ErrDoubleVote
+
+	// ErrNotAllowed happens on a vote request, when the request user is
+	// anonymous or is not allowed to vote.
+	ErrNotAllowed
 
 	// ErrStopped happens when a user tries to vote on a stopped poll.
 	ErrStopped
@@ -41,6 +45,9 @@ func (err TypeError) Type() string {
 
 	case ErrDoubleVote:
 		return "douple-vote"
+
+	case ErrNotAllowed:
+		return "not-allowed"
 
 	case ErrStopped:
 		return "stopped"
@@ -67,6 +74,9 @@ func (err TypeError) Error() string {
 
 	case ErrStopped:
 		msg = "The vote is not open for votes"
+
+	case ErrNotAllowed:
+		msg = "You are not allowed to vote"
 
 	default:
 		msg = "Ups, something went wrong!"

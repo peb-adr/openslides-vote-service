@@ -41,15 +41,29 @@ func handleCreate(mux *http.ServeMux, create creater) {
 	)
 }
 
-type stoper interface {
+type stopper interface {
 	Stop(ctx context.Context, pollID int, w io.Writer) error
 }
 
-func handleStop(mux *http.ServeMux, stop stoper) {
+func handleStop(mux *http.ServeMux, stop stopper) {
 	mux.HandleFunc(
 		httpPathInternal+"/stop",
 		func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "TODO", 500)
+			if r.Method != "POST" {
+				http.Error(w, MessageError{ErrInvalid, "Only POST requests are allowed"}.Error(), 405)
+				return
+			}
+
+			pid, err := pollID(r)
+			if err != nil {
+				http.Error(w, MessageError{ErrInvalid, err.Error()}.Error(), 400)
+				return
+			}
+
+			if err := stop.Stop(r.Context(), pid, w); err != nil {
+				handleError(w, err, true)
+				return
+			}
 		},
 	)
 }
@@ -62,7 +76,21 @@ func handleClear(mux *http.ServeMux, clear clearer) {
 	mux.HandleFunc(
 		httpPathInternal+"/clear",
 		func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "TODO", 500)
+			if r.Method != "POST" {
+				http.Error(w, MessageError{ErrInvalid, "Only POST requests are allowed"}.Error(), 405)
+				return
+			}
+
+			pid, err := pollID(r)
+			if err != nil {
+				http.Error(w, MessageError{ErrInvalid, err.Error()}.Error(), 400)
+				return
+			}
+
+			if err := clear.Clear(r.Context(), pid); err != nil {
+				handleError(w, err, true)
+				return
+			}
 		},
 	)
 }
@@ -77,11 +105,36 @@ type authenticater interface {
 }
 
 func handleVote(mux *http.ServeMux, vote voter, auth authenticater) {
-	// TODO: Get user-id
 	mux.HandleFunc(
 		httpPathExternal,
 		func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "TODO", 500)
+			if r.Method != "POST" {
+				http.Error(w, MessageError{ErrInvalid, "Only POST requests are allowed"}.Error(), 405)
+				return
+			}
+
+			ctx, err := auth.Authenticate(w, r)
+			if err != nil {
+				handleError(w, err, false)
+				return
+			}
+
+			uid := auth.FromContext(ctx)
+			if uid == 0 {
+				http.Error(w, MessageError{ErrNotAllowed, "Anonymous user can not vote"}.Error(), 401)
+				return
+			}
+
+			pid, err := pollID(r)
+			if err != nil {
+				http.Error(w, MessageError{ErrInvalid, err.Error()}.Error(), 400)
+				return
+			}
+
+			if err := vote.Vote(ctx, pid, uid, r.Body); err != nil {
+				handleError(w, err, false)
+				return
+			}
 		},
 	)
 }
@@ -113,7 +166,10 @@ func handleError(w http.ResponseWriter, err error, internal bool) {
 	status := 400
 	var msg string
 
-	var errTyped TypeError
+	var errTyped interface {
+		error
+		Type() string
+	}
 	if errors.As(err, &errTyped) {
 		msg = errTyped.Error()
 	} else {
