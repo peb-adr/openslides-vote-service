@@ -64,10 +64,10 @@ func Run(ctx context.Context, environment []string, secret func(name string) (st
 	service := New(fastBackend, longBackend, fastBackend, ds)
 
 	mux := http.NewServeMux()
-	handleCreate(mux, service)
-	handleStop(mux, service)
-	handleClear(mux, service)
-	handleVote(mux, service, auth)
+	handleCreate(mux, log, service)
+	handleStop(mux, log, service)
+	handleClear(mux, log, service)
+	handleVote(mux, log, service, auth)
 	handleHealth(mux)
 
 	listenAddr := ":" + env["VOTE_PORT"]

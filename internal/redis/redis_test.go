@@ -67,7 +67,19 @@ func TestConfig(t *testing.T) {
 		if !errors.As(err, &errDoesExist) {
 			t.Fatalf("SetConfig with different data has to return a error with method DoesExist. Got: %v", err)
 		}
+	})
 
+	t.Run("Config from non existing poll", func(t *testing.T) {
+		_, err := r.Config(context.Background(), 404)
+
+		if err == nil {
+			t.Fatalf("Config on unknown poll did not return an error")
+		}
+
+		var errDoesNotExist interface{ DoesNotExist() }
+		if !errors.As(err, &errDoesNotExist) {
+			t.Fatalf("Config on unknown poll did has to return an error with method DoesNotExist. Got: %v", err)
+		}
 	})
 }
 

@@ -64,9 +64,12 @@ func (r *Redis) Config(ctx context.Context, pollID int) ([]byte, error) {
 
 	key := fmt.Sprintf(keyConfig, pollID)
 
-	bs, err := redis.Bytes(conn.Do("Get", key))
+	bs, err := redis.Bytes(conn.Do("GET", key))
 	if err != nil {
-		return nil, fmt.Errorf("fetching config from key %s: %w", key, err)
+		if err == redis.ErrNil {
+			return nil, doesNotExistError{}
+		}
+		return nil, fmt.Errorf("redis GET from key %s: %w", key, err)
 	}
 	return bs, nil
 }
@@ -212,3 +215,11 @@ func (doesExistError) Error() string {
 }
 
 func (doesExistError) DoesExist() {}
+
+type doesNotExistError struct{}
+
+func (doesNotExistError) Error() string {
+	return "poll does not exist"
+}
+
+func (doesNotExistError) DoesNotExist() {}
