@@ -51,8 +51,12 @@ func Run(ctx context.Context, environment []string, secret func(name string) (st
 		return fmt.Errorf("building auth: %w", err)
 	}
 
-	fastBackend := &redis.Redis{}
-	longBackend := &redis.Redis{} // TODO: Use postgres
+	addr := env["VOTE_STORE_HOST"] + ":" + env["VOTE_STORE_PORT"]
+	fastBackend := redis.New(addr)
+	fastBackend.Wait(log)
+
+	// TODO: Use postgres
+	longBackend := fastBackend
 
 	service := New(fastBackend, longBackend, fastBackend, ds)
 
@@ -107,6 +111,9 @@ func defaultEnv(environment []string) map[string]string {
 		"MESSAGE_BUS_HOST": "localhost",
 		"MESSAGE_BUS_PORT": "6379",
 		"REDIS_TEST_CONN":  "true",
+
+		"VOTE_STORE_HOST": "localhost",
+		"VOTE_STORE_PORT": "6370",
 	}
 
 	for _, value := range environment {
