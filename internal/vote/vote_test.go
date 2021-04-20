@@ -5,16 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/OpenSlides/openslides-autoupdate-service/pkg/dsmock"
+	"github.com/OpenSlides/openslides-vote-service/internal/backends/memory"
 	"github.com/OpenSlides/openslides-vote-service/internal/vote"
 )
 
 const (
-	validConfig1 = `{"content_object_id":"motion/1","backend":"fast"}`
+	validConfig1 = `{"content_object_id":"motion/1","backend":"fast","entitled_group_ids":[1,2]}`
 	validConfig2 = `{"content_object_id":"assignment/1","backend":"fast"}`
 )
 
@@ -22,7 +22,8 @@ func TestVoteCreate(t *testing.T) {
 	closed := make(chan struct{})
 	defer close(closed)
 
-	backend := new(testBackend)
+	backend := memory.New()
+
 	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
 	t.Run("Unknown poll", func(t *testing.T) {
@@ -30,9 +31,14 @@ func TestVoteCreate(t *testing.T) {
 			t.Errorf("Create returned unexpected error: %v", err)
 		}
 
+		bs, err := backend.Config(context.Background(), 1)
+		if err != nil {
+			t.Fatalf("Can not fetch config: %v", err)
+		}
+
 		var gotConfig vote.PollConfig
-		if err := json.Unmarshal(backend.config[1], &gotConfig); err != nil {
-			t.Fatalf("Found invalid config in backend `%s`: %v", backend.config[1], err)
+		if err := json.Unmarshal(bs, &gotConfig); err != nil {
+			t.Fatalf("Found invalid config in backend `%s`: %v", bs, err)
 		}
 
 		if gotConfig.ContentObject.String() != "motion/1" {
@@ -45,9 +51,14 @@ func TestVoteCreate(t *testing.T) {
 			t.Errorf("Create returned unexpected error: %v", err)
 		}
 
+		bs, err := backend.Config(context.Background(), 1)
+		if err != nil {
+			t.Fatalf("Can not fetch config: %v", err)
+		}
+
 		var gotConfig vote.PollConfig
-		if err := json.Unmarshal(backend.config[1], &gotConfig); err != nil {
-			t.Fatalf("Found invalid config in backend `%s`: %v", backend.config[1], err)
+		if err := json.Unmarshal(bs, &gotConfig); err != nil {
+			t.Fatalf("Found invalid config in backend `%s`: %v", bs, err)
 		}
 
 		if gotConfig.ContentObject.String() != "motion/1" {
@@ -73,11 +84,68 @@ func TestVoteCreate(t *testing.T) {
 	})
 }
 
+type StubGetter struct {
+	data      map[string]string
+	requested map[string]bool
+}
+
+func (g *StubGetter) Get(ctx context.Context, keys ...string) ([]json.RawMessage, error) {
+	if g.requested == nil {
+		g.requested = make(map[string]bool)
+	}
+
+	values := make([]json.RawMessage, len(keys))
+	for i, key := range keys {
+		g.requested[key] = true
+
+		v, ok := g.data[key]
+		if ok {
+			values[i] = []byte(v)
+		}
+	}
+	return values, nil
+}
+
+func (g *StubGetter) assertKeys(t *testing.T, keys ...string) {
+	for _, key := range keys {
+		if !g.requested[key] {
+			t.Errorf("Key %s is was not requested", key)
+		}
+	}
+}
+
+func TestVoteCreatePreloadData(t *testing.T) {
+	backend := memory.New()
+	ds := StubGetter{data: dsmock.YAMLData(`
+	poll/1/meeting_id: 1
+	group:
+		1:
+
+			user_ids: [1,2]
+		2:
+			user_ids: [2,3]
+	user:
+		1:
+			is_present_in_meeting_ids: [1]
+		2:
+			is_present_in_meeting_ids: [1]
+		3:
+			is_present_in_meeting_ids: [1]
+	`)}
+	v := vote.New(backend, backend, backend, &ds)
+
+	if err := v.Create(context.Background(), 1, strings.NewReader(validConfig1)); err != nil {
+		t.Errorf("Create returned unexpected error: %v", err)
+	}
+
+	ds.assertKeys(t, "poll/1/meeting_id", "user/1/is_present_in_meeting_ids", "user/2/is_present_in_meeting_ids", "user/3/is_present_in_meeting_ids")
+}
+
 func TestVoteCreateInvalid(t *testing.T) {
 	closed := make(chan struct{})
 	defer close(closed)
 
-	backend := new(testBackend)
+	backend := memory.New()
 	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
 	for _, tt := range []struct {
@@ -129,20 +197,15 @@ func TestVoteStop(t *testing.T) {
 	closed := make(chan struct{})
 	defer close(closed)
 
-	backend := new(testBackend)
+	backend := memory.New()
 	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
 	t.Run("Unknown poll", func(t *testing.T) {
 		buf := new(bytes.Buffer)
 		err := v.Stop(context.Background(), 1, buf)
 
-		var errTyped vote.TypeError
-		if !errors.As(err, &errTyped) {
-			t.Fatalf("Stop did not return an Typed error. Got: %v", err)
-		}
-
-		if errTyped != vote.ErrNotExists {
-			t.Errorf("Got error type `%s`, expected `not-exist`", errTyped.Type())
+		if !errors.Is(err, vote.ErrNotExists) {
+			t.Errorf("Expect ErrNotExist error, got: %v", err)
 		}
 
 		if buf.Len() != 0 {
@@ -155,10 +218,8 @@ func TestVoteStop(t *testing.T) {
 			t.Fatalf("Starting poll: %v", err)
 		}
 
-		backend.objects[1] = [][]byte{
-			[]byte(`"polldata1"`),
-			[]byte(`"polldata2"`),
-		}
+		backend.Vote(context.Background(), 1, 1, []byte(`"polldata1"`))
+		backend.Vote(context.Background(), 1, 2, []byte(`"polldata2"`))
 
 		buf := new(bytes.Buffer)
 		if err := v.Stop(context.Background(), 1, buf); err != nil {
@@ -170,7 +231,9 @@ func TestVoteStop(t *testing.T) {
 			t.Errorf("Stop wrote `%s`, expected `%s`", got, expect)
 		}
 
-		if !backend.stopped[1] {
+		err := backend.Vote(context.Background(), 1, 3, []byte(`"polldata3"`))
+		var errStopped interface{ Stopped() }
+		if !errors.As(err, &errStopped) {
 			t.Errorf("Stop did not stop the poll in the backend.")
 		}
 	})
@@ -180,17 +243,18 @@ func TestVoteClear(t *testing.T) {
 	closed := make(chan struct{})
 	defer close(closed)
 
-	backend := new(testBackend)
+	backend := memory.New()
 	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
-	backend.SetConfig(context.Background(), 1, nil)
+	backend.SetConfig(context.Background(), 1, []byte("my config"))
 
 	if err := v.Clear(context.Background(), 1); err != nil {
 		t.Fatalf("Clear returned unexpected error: %v", err)
 	}
 
-	_, ok := backend.config[1]
-	if ok {
+	_, err := backend.Config(context.Background(), 1)
+	var errDoesExist interface{ DoesNotExist() }
+	if !errors.As(err, &errDoesExist) {
 		t.Errorf("Clear did not remove the config")
 	}
 }
@@ -199,19 +263,14 @@ func TestVoteVote(t *testing.T) {
 	closed := make(chan struct{})
 	defer close(closed)
 
-	backend := new(testBackend)
+	backend := memory.New()
 	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
 
 	t.Run("Unknown poll", func(t *testing.T) {
 		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{}`))
 
-		var errTyped vote.TypeError
-		if !errors.As(err, &errTyped) {
-			t.Fatalf("Vote did not return an Typed error. Got: %v", err)
-		}
-
-		if errTyped != vote.ErrNotExists {
-			t.Errorf("Got error type `%s`, expected `not-exist`", errTyped.Type())
+		if !errors.Is(err, vote.ErrNotExists) {
+			t.Errorf("Expected ErrNotExists, got: %v", err)
 		}
 	})
 
@@ -244,24 +303,12 @@ func TestVoteVote(t *testing.T) {
 		if errTyped != vote.ErrInvalid {
 			t.Errorf("Got error type `%s`, expected `%s`", errTyped.Type(), vote.ErrInvalid.Type())
 		}
-
-		if len(backend.objects[1]) != 0 {
-			t.Fatalf("Vote did save the vote object")
-		}
 	})
 
 	t.Run("Valid data", func(t *testing.T) {
 		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`"Y"`))
 		if err != nil {
 			t.Fatalf("Vote returned unexpected error: %v", err)
-		}
-
-		if len(backend.objects[1]) != 1 {
-			t.Fatalf("Vote did not save the vote object")
-		}
-
-		if got := string(backend.objects[1][0]); got != `"Y"` {
-			t.Fatalf("Vote saved `%s`, expected `\"Y\"`", got)
 		}
 	})
 
@@ -282,7 +329,8 @@ func TestVoteVote(t *testing.T) {
 	})
 
 	t.Run("Poll is stopped", func(t *testing.T) {
-		backend.stopped[1] = true
+		backend.Stop(context.Background(), 1)
+
 		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`"Y"`))
 		if err == nil {
 			t.Fatalf("Vote returned no error")
@@ -298,96 +346,3 @@ func TestVoteVote(t *testing.T) {
 		}
 	})
 }
-
-// testBackend is a simple (not concurent) vote backend that can be used for
-// testing.
-type testBackend struct {
-	config  map[int][]byte
-	voted   map[int]map[int]bool
-	objects map[int][][]byte
-	stopped map[int]bool
-}
-
-func (b *testBackend) SetConfig(ctx context.Context, pollID int, config []byte) error {
-	if b.config == nil {
-		b.config = make(map[int][]byte)
-		b.voted = make(map[int]map[int]bool)
-		b.objects = make(map[int][][]byte)
-		b.stopped = make(map[int]bool)
-	}
-	b.voted[pollID] = make(map[int]bool)
-
-	if old, exists := b.config[pollID]; exists && !bytes.Equal(old, config) {
-		return doesExistError{fmt.Errorf("Does exist")}
-	}
-
-	b.config[pollID] = config
-	return nil
-}
-
-func (b *testBackend) Config(ctx context.Context, pollID int) ([]byte, error) {
-	if b.config == nil {
-		return nil, doesNotExistError{fmt.Errorf("Does not exist")}
-	}
-
-	config, ok := b.config[pollID]
-	if !ok {
-		return nil, doesNotExistError{fmt.Errorf("Does not exist")}
-	}
-	return config, nil
-}
-
-func (b *testBackend) Vote(ctx context.Context, pollID int, userID int, object []byte) error {
-	if _, ok := b.config[pollID]; !ok {
-		return fmt.Errorf("unknown poll with id %d", pollID)
-	}
-
-	if b.stopped[pollID] {
-		return stoppedError{fmt.Errorf("Poll is stopped")}
-	}
-
-	if _, ok := b.voted[pollID][userID]; ok {
-		return doupleVoteError{fmt.Errorf("user has already voted")}
-	}
-
-	b.voted[pollID][userID] = true
-	b.objects[pollID] = append(b.objects[pollID], object)
-	return nil
-}
-
-func (b *testBackend) Stop(ctx context.Context, pollID int) ([][]byte, error) {
-	b.stopped[pollID] = true
-	return b.objects[pollID], nil
-}
-
-func (b *testBackend) Clear(ctx context.Context, pollID int) error {
-	delete(b.config, pollID)
-	delete(b.voted, pollID)
-	delete(b.objects, pollID)
-	delete(b.stopped, pollID)
-	return nil
-}
-
-type doesExistError struct {
-	error
-}
-
-func (doesExistError) DoesExist() {}
-
-type doesNotExistError struct {
-	error
-}
-
-func (doesNotExistError) DoesNotExist() {}
-
-type doupleVoteError struct {
-	error
-}
-
-func (doupleVoteError) DoupleVote() {}
-
-type stoppedError struct {
-	error
-}
-
-func (stoppedError) Stopped() {}

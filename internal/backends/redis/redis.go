@@ -14,7 +14,7 @@ const (
 	keyVote    = "vote_data_%d"
 )
 
-// Redis is a vote-Backend.
+// Backend is a vote-Backend.
 //
 // Is tries to save the votes as fast as possible. All necessary checkes are
 // done inside a lua-script so everything is done in one atomic step. It is
@@ -23,12 +23,12 @@ const (
 // voted.
 //
 // Has to be created with redis.New().
-type Redis struct {
+type Backend struct {
 	pool *redis.Pool
 }
 
 // New creates an initializes Redis instance.
-func New(addr string) *Redis {
+func New(addr string) *Backend {
 	pool := redis.Pool{
 		MaxActive:   100,
 		Wait:        true,
@@ -36,13 +36,13 @@ func New(addr string) *Redis {
 		IdleTimeout: 240 * time.Second,
 		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", addr) },
 	}
-	return &Redis{
+	return &Backend{
 		pool: &pool,
 	}
 }
 
 // Wait blocks until a connection to redis can be established.
-func (r *Redis) Wait(ctx context.Context, log func(format string, a ...interface{})) {
+func (r *Backend) Wait(ctx context.Context, log func(format string, a ...interface{})) {
 	for ctx.Err() == nil {
 		conn := r.pool.Get()
 		_, err := conn.Do("PING")
@@ -58,7 +58,7 @@ func (r *Redis) Wait(ctx context.Context, log func(format string, a ...interface
 }
 
 // Config returs the config for a poll.
-func (r *Redis) Config(ctx context.Context, pollID int) ([]byte, error) {
+func (r *Backend) Config(ctx context.Context, pollID int) ([]byte, error) {
 	conn := r.pool.Get()
 	defer conn.Close()
 
@@ -90,7 +90,7 @@ return 0
 `
 
 // SetConfig saves the config for a poll.
-func (r *Redis) SetConfig(ctx context.Context, pollID int, config []byte) error {
+func (r *Backend) SetConfig(ctx context.Context, pollID int, config []byte) error {
 	conn := r.pool.Get()
 	defer conn.Close()
 
@@ -133,7 +133,7 @@ return 0`
 // Vote saves a vote in redis.
 //
 // It also checks, that the user did not vote before and that the poll is open.
-func (r *Redis) Vote(ctx context.Context, pollID int, userID int, object []byte) error {
+func (r *Backend) Vote(ctx context.Context, pollID int, userID int, object []byte) error {
 	conn := r.pool.Get()
 	defer conn.Close()
 
@@ -159,7 +159,7 @@ func (r *Redis) Vote(ctx context.Context, pollID int, userID int, object []byte)
 // Stop ends a poll.
 //
 // It returns all vote objects.
-func (r *Redis) Stop(ctx context.Context, pollID int) ([][]byte, error) {
+func (r *Backend) Stop(ctx context.Context, pollID int) ([][]byte, error) {
 	conn := r.pool.Get()
 	defer conn.Close()
 
@@ -178,7 +178,7 @@ func (r *Redis) Stop(ctx context.Context, pollID int) ([][]byte, error) {
 }
 
 // Clear delete all information from a poll.
-func (r *Redis) Clear(ctx context.Context, pollID int) error {
+func (r *Backend) Clear(ctx context.Context, pollID int) error {
 	conn := r.pool.Get()
 	defer conn.Close()
 

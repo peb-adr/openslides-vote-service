@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"strconv"
 	"strings"
 
@@ -20,6 +19,7 @@ type Vote struct {
 	fastBackend Backend
 	longBackend Backend
 	config      Configer
+	ds          datastore.Getter
 }
 
 // New creates an initializes vote service.
@@ -28,6 +28,7 @@ func New(fast, long Backend, config Configer, ds datastore.Getter) *Vote {
 		fastBackend: fast,
 		longBackend: long,
 		config:      config,
+		ds:          ds,
 	}
 }
 
@@ -58,6 +59,15 @@ func (v *Vote) Create(ctx context.Context, pollID int, configReader io.Reader) e
 		}
 		return fmt.Errorf("save config: %w", err)
 	}
+
+	fetcher := datastore.NewFetcher(v.ds)
+	fetcher.Int(ctx, "poll/%d/meeting_id", pollID)
+	for _, gid := range config.Groups {
+		for _, id := range fetcher.Ints(ctx, "group/%d/user_ids", gid) {
+			fetcher.Ints(ctx, "user/%d/is_present_in_meeting_ids", id)
+		}
+	}
+
 	return nil
 }
 
@@ -154,7 +164,7 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 	//  * Remove requestUser and voteUser in anonymous votes
 	//  * Check config users_activate_vote_weight and set weight to 1_000_000 if not set.
 	//  * Save vote_count
-	userID := rand.Intn(1_000_000_000) + 1
+	userID := requestUser
 
 	if err := backend.Vote(ctx, pollID, userID, vote.original); err != nil {
 		var errDoupleVote interface{ DoupleVote() }
@@ -275,15 +285,14 @@ type PollConfig struct {
 	ContentObject genericRelation `json:"content_object_id"`
 
 	// On motion poll and assignment poll.
-	Anonymous bool   `json:"is_pseudoanonymized"`
-	Method    string `json:"pollmethod"`
-	Groups    []int  `json:"entitled_group_ids"`
+	PollType string `json:"type"`
+	Method   string `json:"pollmethod"`
+	Groups   []int  `json:"entitled_group_ids"`
 
 	// Only on assignment poll.
 	GlobalYes     bool `json:"global_yes"`
 	GlobalNo      bool `json:"global_no"`
 	GlobalAbstain bool `json:"global_abstain"`
-	MultipleVotes bool `json:"multiple_votes"` // TODO: Not in models.yml
 	MinAmount     int  `json:"min_votes_amount"`
 	MaxAmount     int  `json:"max_votes_amount"`
 }

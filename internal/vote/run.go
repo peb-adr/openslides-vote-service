@@ -10,7 +10,8 @@ import (
 	"github.com/OpenSlides/openslides-autoupdate-service/pkg/auth"
 	"github.com/OpenSlides/openslides-autoupdate-service/pkg/datastore"
 	messageBusRedis "github.com/OpenSlides/openslides-autoupdate-service/pkg/redis"
-	"github.com/OpenSlides/openslides-vote-service/internal/redis"
+	"github.com/OpenSlides/openslides-vote-service/internal/backends/memory"
+	"github.com/OpenSlides/openslides-vote-service/internal/backends/redis"
 )
 
 const authDebugKey = "auth-dev-key"
@@ -51,17 +52,22 @@ func Run(ctx context.Context, environment []string, secret func(name string) (st
 		return fmt.Errorf("building auth: %w", err)
 	}
 
-	addr := env["VOTE_REDIS_HOST"] + ":" + env["VOTE_REDIS_PORT"]
-	fastBackend := redis.New(addr)
-	fastBackend.Wait(ctx, log)
-	if ctx.Err() != nil {
-		return ctx.Err()
+	fastBackend, err := buildBackend(ctx, log, env, env["VOTE_BACKEND_FAST"])
+	if err != nil {
+		return fmt.Errorf("building fast backend: %w", err)
 	}
 
-	// TODO: Use postgres
-	longBackend := fastBackend
+	longBackend, err := buildBackend(ctx, log, env, env["VOTE_BACKEND_LONG"])
+	if err != nil {
+		return fmt.Errorf("building long backend: %w", err)
+	}
 
-	service := New(fastBackend, longBackend, fastBackend, ds)
+	config, ok := fastBackend.(Configer)
+	if !ok {
+		return fmt.Errorf("fast backend does not implement the Configer interface")
+	}
+
+	service := New(fastBackend, longBackend, config, ds)
 
 	mux := http.NewServeMux()
 	handleCreate(mux, log, service)
@@ -98,8 +104,12 @@ func Run(ctx context.Context, environment []string, secret func(name string) (st
 // defaut values.
 func defaultEnv(environment []string) map[string]string {
 	env := map[string]string{
-		"VOTE_HOST": "",
-		"VOTE_PORT": "9013",
+		"VOTE_HOST":         "",
+		"VOTE_PORT":         "9013",
+		"VOTE_BACKEND_FAST": "redis",
+		"VOTE_BACKEND_LONG": "redis", // TODO: postgres
+		"VOTE_REDIS_HOST":   "localhost",
+		"VOTE_REDIS_PORT":   "6379",
 
 		"DATASTORE_READER_HOST":     "localhost",
 		"DATASTORE_READER_PORT":     "9010",
@@ -114,9 +124,6 @@ func defaultEnv(environment []string) map[string]string {
 		"MESSAGE_BUS_HOST": "localhost",
 		"MESSAGE_BUS_PORT": "6379",
 		"REDIS_TEST_CONN":  "true",
-
-		"VOTE_REDIS_HOST": "localhost",
-		"VOTE_REDIS_PORT": "6379",
 
 		"OPENSLIDES_DEVELOPMENT": "false",
 	}
@@ -260,4 +267,26 @@ func buildMessageBus(env map[string]string, log func(format string, v ...interfa
 	}
 
 	return &messageBusRedis.Redis{Conn: conn}, nil
+}
+
+func buildBackend(ctx context.Context, log func(string, ...interface{}), env map[string]string, name string) (Backend, error) {
+	switch name {
+	case "memory":
+		return memory.New(), nil
+	case "redis":
+		addr := env["VOTE_REDIS_HOST"] + ":" + env["VOTE_REDIS_PORT"]
+		b := redis.New(addr)
+		b.Wait(ctx, log)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		return b, nil
+
+	case "long":
+		return nil, errors.New("TODO")
+
+	default:
+		return nil, fmt.Errorf("unknown backend %s", name)
+	}
 }

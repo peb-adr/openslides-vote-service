@@ -13,22 +13,23 @@ import (
 )
 
 func TestRun(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	log := testLog{}
 
 	t.Run("Start Server with default port", func(t *testing.T) {
-		var err error
+		var runErr error
 		go func() {
-			err = vote.Run(ctx, []string{}, secret, log.Printf)
+			runErr = vote.Run(ctx, []string{"VOTE_BACKEND_FAST=memory", "VOTE_BACKEND_LONG=memory"}, secret, log.Printf)
 		}()
 
-		if _, err := net.DialTimeout("tcp", "localhost:9013", 10*time.Millisecond); err != nil {
-			t.Errorf("Server could not be reached: %v", err)
+		_, err := net.DialTimeout("tcp", "localhost:9013", 10*time.Millisecond)
+		if err != nil {
+			t.Fatalf("Server could not be reached: %v", err)
 		}
 
-		if err != nil {
+		if runErr != nil {
 			t.Errorf("Vote.Run retunred unexpected error: %v", err)
 		}
 
@@ -40,7 +41,7 @@ func TestRun(t *testing.T) {
 	t.Run("Start Server with given port", func(t *testing.T) {
 		var err error
 		go func() {
-			err = vote.Run(ctx, []string{"VOTE_PORT=5000"}, secret, log.Printf)
+			err = vote.Run(ctx, []string{"VOTE_BACKEND_FAST=memory", "VOTE_BACKEND_LONG=memory", "VOTE_PORT=5000"}, secret, log.Printf)
 		}()
 
 		if _, err := net.DialTimeout("tcp", "localhost:5000", 10*time.Millisecond); err != nil {
@@ -62,7 +63,7 @@ func TestRun(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			// Use an individuel port because the default port could be used by other tests.
-			runErr = vote.Run(ctx, []string{"VOTE_PORT=5001"}, secret, log.Printf)
+			runErr = vote.Run(ctx, []string{"VOTE_BACKEND_FAST=memory", "VOTE_BACKEND_LONG=memory", "VOTE_PORT=5001"}, secret, log.Printf)
 			close(done)
 		}()
 
@@ -93,7 +94,7 @@ func TestRun(t *testing.T) {
 		var runErr error
 		go func() {
 			// Use an individuel port because the default port could be used by other tests.
-			runErr = vote.Run(ctx, []string{"VOTE_PORT=5002"}, secret, log.Printf)
+			runErr = vote.Run(ctx, []string{"VOTE_BACKEND_FAST=memory", "VOTE_BACKEND_LONG=memory", "VOTE_PORT=5002"}, secret, log.Printf)
 		}()
 
 		baseUrl := "http://localhost:5002"
