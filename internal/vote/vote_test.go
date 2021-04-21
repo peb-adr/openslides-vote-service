@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	validConfig1 = `{"content_object_id":"motion/1","backend":"fast","entitled_group_ids":[1,2]}`
+	validConfig1 = `{"content_object_id":"motion/1","backend":"fast","entitled_group_ids":[1]}`
 	validConfig2 = `{"content_object_id":"assignment/1","backend":"fast"}`
 )
 
@@ -24,7 +24,13 @@ func TestVoteCreate(t *testing.T) {
 
 	backend := memory.New()
 
-	v := vote.New(backend, backend, backend, dsmock.NewMockDatastore(closed, nil))
+	ds := StubGetter{data: map[string]string{
+		"poll/1/meeting_id":                "5",
+		"group/1/user_ids":                 "[1]",
+		"user/1/is_present_in_meeting_ids": "[1]",
+	}}
+
+	v := vote.New(backend, backend, backend, &ds)
 
 	t.Run("Unknown poll", func(t *testing.T) {
 		if err := v.Create(context.Background(), 1, strings.NewReader(validConfig1)); err != nil {
@@ -86,10 +92,14 @@ func TestVoteCreate(t *testing.T) {
 
 type StubGetter struct {
 	data      map[string]string
+	err       error
 	requested map[string]bool
 }
 
 func (g *StubGetter) Get(ctx context.Context, keys ...string) ([]json.RawMessage, error) {
+	if g.err != nil {
+		return nil, g.err
+	}
 	if g.requested == nil {
 		g.requested = make(map[string]bool)
 	}
@@ -120,16 +130,11 @@ func TestVoteCreatePreloadData(t *testing.T) {
 	poll/1/meeting_id: 1
 	group:
 		1:
-
 			user_ids: [1,2]
-		2:
-			user_ids: [2,3]
 	user:
 		1:
 			is_present_in_meeting_ids: [1]
 		2:
-			is_present_in_meeting_ids: [1]
-		3:
 			is_present_in_meeting_ids: [1]
 	`)}
 	v := vote.New(backend, backend, backend, &ds)
@@ -138,7 +143,18 @@ func TestVoteCreatePreloadData(t *testing.T) {
 		t.Errorf("Create returned unexpected error: %v", err)
 	}
 
-	ds.assertKeys(t, "poll/1/meeting_id", "user/1/is_present_in_meeting_ids", "user/2/is_present_in_meeting_ids", "user/3/is_present_in_meeting_ids")
+	ds.assertKeys(t, "poll/1/meeting_id", "user/1/is_present_in_meeting_ids", "user/2/is_present_in_meeting_ids")
+}
+
+func TestVoteCreateDSError(t *testing.T) {
+	backend := memory.New()
+	ds := StubGetter{err: errors.New("Some error")}
+	v := vote.New(backend, backend, backend, &ds)
+	err := v.Create(context.Background(), 1, strings.NewReader(validConfig1))
+
+	if err == nil {
+		t.Errorf("Got no error, expected `Some error`")
+	}
 }
 
 func TestVoteCreateInvalid(t *testing.T) {

@@ -68,6 +68,10 @@ func (v *Vote) Create(ctx context.Context, pollID int, configReader io.Reader) e
 		}
 	}
 
+	if err := fetcher.Error(); err != nil {
+		return fmt.Errorf("fetching poll data: %w", err)
+	}
+
 	return nil
 }
 
