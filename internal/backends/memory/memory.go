@@ -4,7 +4,6 @@
 package memory
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -14,48 +13,28 @@ import (
 // testing.
 type Backend struct {
 	mu      sync.Mutex
-	config  map[int][]byte
 	voted   map[int]map[int]bool
 	objects map[int][][]byte
-	stopped map[int]bool
+	state   map[int]int
 }
 
 // New initializes a new memory.Backend.
 func New() *Backend {
 	b := Backend{
-		config:  make(map[int][]byte),
 		voted:   make(map[int]map[int]bool),
 		objects: make(map[int][][]byte),
-		stopped: make(map[int]bool),
+		state:   make(map[int]int),
 	}
 	return &b
 }
 
-// SetConfig saves the vote config.
-func (b *Backend) SetConfig(ctx context.Context, pollID int, config []byte) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	b.voted[pollID] = make(map[int]bool)
-
-	if old, exists := b.config[pollID]; exists && !bytes.Equal(old, config) {
-		return doesExistError{fmt.Errorf("Does exist")}
+// Start opens opens a poll.
+func (b *Backend) Start(ctx context.Context, pollID int) error {
+	if b.state[pollID] == 2 {
+		return stoppedError{fmt.Errorf("poll is stopped")}
 	}
-
-	b.config[pollID] = config
+	b.state[pollID] = 1
 	return nil
-}
-
-// Config retrieves the config.
-func (b *Backend) Config(ctx context.Context, pollID int) ([]byte, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	config, ok := b.config[pollID]
-	if !ok {
-		return nil, doesNotExistError{fmt.Errorf("Does not exist")}
-	}
-	return config, nil
 }
 
 // Vote saves a vote.
@@ -63,7 +42,11 @@ func (b *Backend) Vote(ctx context.Context, pollID int, userID int, object []byt
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.stopped[pollID] {
+	if b.state[pollID] == 0 {
+		return doesNotExistError{fmt.Errorf("poll is not open")}
+	}
+
+	if b.state[pollID] == 2 {
 		return stoppedError{fmt.Errorf("Poll is stopped")}
 	}
 
@@ -85,7 +68,7 @@ func (b *Backend) Stop(ctx context.Context, pollID int) ([][]byte, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	b.stopped[pollID] = true
+	b.state[pollID] = 2
 	return b.objects[pollID], nil
 }
 
@@ -94,18 +77,11 @@ func (b *Backend) Clear(ctx context.Context, pollID int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	delete(b.config, pollID)
 	delete(b.voted, pollID)
 	delete(b.objects, pollID)
-	delete(b.stopped, pollID)
+	delete(b.state, pollID)
 	return nil
 }
-
-type doesExistError struct {
-	error
-}
-
-func (doesExistError) DoesExist() {}
 
 type doesNotExistError struct {
 	error

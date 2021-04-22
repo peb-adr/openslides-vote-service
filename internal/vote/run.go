@@ -62,12 +62,7 @@ func Run(ctx context.Context, environment []string, secret func(name string) (st
 		return fmt.Errorf("building long backend: %w", err)
 	}
 
-	config, ok := fastBackend.(Configer)
-	if !ok {
-		return fmt.Errorf("fast backend does not implement the Configer interface")
-	}
-
-	service := New(fastBackend, longBackend, config, ds)
+	service := New(fastBackend, longBackend, ds)
 
 	mux := http.NewServeMux()
 	handleCreate(mux, log, service)

@@ -27,16 +27,6 @@ func startRedis(t *testing.T) (string, func()) {
 	}
 }
 
-func TestConfig(t *testing.T) {
-	port, close := startRedis(t)
-	defer close()
-
-	r := redis.New("localhost:" + port)
-	r.Wait(context.Background(), nil)
-
-	test.Config(t, r)
-}
-
 func TestVote(t *testing.T) {
 	port, close := startRedis(t)
 	defer close()

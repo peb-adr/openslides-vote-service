@@ -15,7 +15,7 @@ const (
 )
 
 type creater interface {
-	Create(ctx context.Context, pollID int, config io.Reader) error
+	Create(ctx context.Context, pollID int) error
 }
 
 func handleCreate(mux *http.ServeMux, log func(format string, a ...interface{}), create creater) {
@@ -33,7 +33,7 @@ func handleCreate(mux *http.ServeMux, log func(format string, a ...interface{}),
 				return
 			}
 
-			if err := create.Create(r.Context(), pid, r.Body); err != nil {
+			if err := create.Create(r.Context(), pid); err != nil {
 				handleError(w, log, err, true)
 				return
 			}

@@ -13,18 +13,11 @@ import (
 
 type CreaterStub struct {
 	pid       int
-	config    string
 	expectErr error
 }
 
-func (c *CreaterStub) Create(ctx context.Context, pollID int, config io.Reader) error {
+func (c *CreaterStub) Create(ctx context.Context, pollID int) error {
 	c.pid = pollID
-
-	cfg, err := io.ReadAll(config)
-	if err != nil {
-		return err
-	}
-	c.config = string(cfg)
 	return c.expectErr
 }
 
@@ -72,10 +65,6 @@ func TestHandleCreate(t *testing.T) {
 
 		if creater.pid != 1 {
 			t.Errorf("Creater was called with pid %d, expected 1", creater.pid)
-		}
-
-		if creater.config != "request body" {
-			t.Errorf("Creater was called with body `%s` expected `request body`", creater.config)
 		}
 	})
 
