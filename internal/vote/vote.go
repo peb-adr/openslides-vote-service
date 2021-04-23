@@ -35,7 +35,7 @@ func New(fast, long Backend, ds datastore.Getter) *Vote {
 // not throw an error.
 func (v *Vote) Create(ctx context.Context, pollID int) error {
 	fetcher := datastore.NewFetcher(v.ds)
-	var config PollConfig
+	var config pollConfig
 	fetcher.Object(ctx, &config, "poll/%d", pollID)
 	for _, gid := range config.Groups {
 		for _, id := range fetcher.Ints(ctx, "group/%d/user_ids", gid) {
@@ -70,7 +70,7 @@ func (v *Vote) Create(ctx context.Context, pollID int) error {
 // the same data. Calling vote.Clear will stop this behavior.
 func (v *Vote) Stop(ctx context.Context, pollID int, w io.Writer) error {
 	fetcher := datastore.NewFetcher(v.ds)
-	var config PollConfig
+	var config pollConfig
 	fetcher.Object(ctx, &config, "poll/%d", pollID)
 	if err := fetcher.Error(); err != nil {
 		return fmt.Errorf("fetching poll data: %w", err)
@@ -140,7 +140,7 @@ func sliceMatch(g1, g2 []int) bool {
 // Vote validates and saves the vote.
 func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) error {
 	fetcher := datastore.NewFetcher(v.ds)
-	var poll PollConfig
+	var poll pollConfig
 	fetcher.Object(ctx, &poll, "poll/%d", pollID)
 	presentMeetings := fetcher.Ints(ctx, "user/%d/is_present_in_meeting_ids", requestUser)
 	if err := fetcher.Error(); err != nil {
@@ -151,7 +151,7 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 		return MessageError{ErrNotAllowed, fmt.Sprintf("You have to be present in meeting %d", poll.MeetingID)}
 	}
 
-	var vote voteData
+	var vote ballot
 	if err := json.NewDecoder(r).Decode(&vote); err != nil {
 		return MessageError{ErrInvalid, fmt.Sprintf("invalid json: %v", err)}
 	}
@@ -215,22 +215,98 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 	return nil
 }
 
-type voteData struct {
+type ballot struct {
 	UserID int       `json:"user_id"`
 	Value  voteValue `json:"value"`
 }
 
-func (v *voteData) validate(config PollConfig) error {
-	// TODO: Validate
-
-	if v.Value.Type() != voteDataString {
-		return MessageError{ErrInvalid, "Data has to be a string."}
+func (v *ballot) validate(poll pollConfig) error {
+	// TODO: global options
+	if poll.MinAmount == 0 {
+		poll.MinAmount = 1
 	}
 
-	if v.Value.str != "Y" && v.Value.str != "N" && (v.Value.str != "A" || config.Method == "YNA") {
-		return MessageError{ErrInvalid, "Data does not fit the poll method."}
+	if poll.MaxAmount == 0 {
+		poll.MaxAmount = 1
 	}
-	return nil
+
+	allowedOptions := make(map[int]bool, len(poll.Options))
+	for _, o := range poll.Options {
+		allowedOptions[o] = true
+	}
+
+	allowedGlobal := map[string]bool{
+		"Y": poll.GlobalYes,
+		"N": poll.GlobalNo,
+		"A": poll.GlobalAbstain,
+	}
+
+	// Helper "error" that is not an error. Should help readability.
+	var voteIsValid error
+
+	switch poll.Method {
+	case "Y", "N":
+		switch v.Value.Type() {
+		case ballotValueString:
+			// The user answered with Y, N or A (or another invalid string).
+			if !allowedGlobal[v.Value.str] {
+				return InvalidVote("Your answer is invalid")
+			}
+			return voteIsValid
+
+		case ballotValueOptionAmount:
+			var sumAmount int
+			for optionID, amount := range v.Value.optionAmount {
+				if amount < 0 {
+					return InvalidVote("Your answer for option %d has to be >= 0", optionID)
+				}
+
+				if !allowedOptions[optionID] {
+					return InvalidVote("Option_id %d does not belong to the poll", optionID)
+				}
+
+				sumAmount += amount
+			}
+
+			if sumAmount < poll.MinAmount || sumAmount > poll.MaxAmount {
+				return InvalidVote("The sum of your answers has to be between %d and %d", poll.MinAmount, poll.MaxAmount)
+			}
+
+			return voteIsValid
+
+		default:
+			return MessageError{ErrInvalid, "Your answer is invalid"}
+		}
+
+	case "YN", "YNA":
+		switch v.Value.Type() {
+		case ballotValueString:
+			// The user answered with Y, N or A (or another invalid string).
+			if !allowedGlobal[v.Value.str] {
+				return InvalidVote("Your answer is invalid")
+			}
+			return voteIsValid
+
+		case ballotValueOptionString:
+			for optionID, yna := range v.Value.optionYNA {
+				if !allowedOptions[optionID] {
+					return InvalidVote("Option_id %d does not belong to the poll", optionID)
+				}
+
+				if yna != "Y" && yna != "N" && (yna != "A" || poll.Method != "YNA") {
+					// Valid that given data matches poll method.
+					return InvalidVote("Data for option %d does not fit the poll method.", optionID)
+				}
+			}
+			return voteIsValid
+
+		default:
+			return InvalidVote("Your answer is invalid")
+		}
+
+	default:
+		return InvalidVote("Your answer is invalid")
+	}
 }
 
 // voteData is the data a user sends as his vote.
@@ -258,43 +334,37 @@ func (v *voteValue) UnmarshalJSON(b []byte) error {
 		// voteData is option_id to amount
 		return nil
 	}
+	v.optionAmount = nil
 
 	if err := json.Unmarshal(b, &v.optionYNA); err == nil {
 		// voteData is option_id to string
 		return nil
 	}
 
-	return fmt.Errorf("unknown poll data: %s", b)
+	return fmt.Errorf("unknown vote value: `%s`", b)
 }
 
 const (
-	voteDataUnknown = iota
-	voteDataString
-	voteDataOptionAmount
-	voteDataOptionString
-)
-
-const (
-	pollMethodYN = iota
-	pollMethodYNA
-	pollMethodY
-	pollMethodN
+	ballotValueUnknown = iota
+	ballotValueString
+	ballotValueOptionAmount
+	ballotValueOptionString
 )
 
 func (v *voteValue) Type() int {
 	if v.str != "" {
-		return voteDataString
+		return ballotValueString
 	}
 
 	if v.optionAmount != nil {
-		return voteDataOptionAmount
+		return ballotValueOptionAmount
 	}
 
 	if v.optionYNA != nil {
-		return voteDataOptionString
+		return ballotValueOptionString
 	}
 
-	return voteDataUnknown
+	return ballotValueUnknown
 }
 
 // Backend is a storage for the poll options.
@@ -321,8 +391,8 @@ type Backend interface {
 	Clear(ctx context.Context, pollID int) error
 }
 
-// PollConfig is data needed to validate a vote.
-type PollConfig struct {
+// pollConfig is data needed to validate a vote.
+type pollConfig struct {
 	ID            int    `json:"id"`
 	MeetingID     int    `json:"meeting_id"`
 	Backend       string `json:"backend"`
@@ -334,4 +404,5 @@ type PollConfig struct {
 	GlobalAbstain bool   `json:"global_abstain"`
 	MinAmount     int    `json:"min_votes_amount"`
 	MaxAmount     int    `json:"max_votes_amount"`
+	Options       []int  `json:"option_ids"`
 }

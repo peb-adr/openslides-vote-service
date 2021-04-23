@@ -184,6 +184,9 @@ func TestVoteVote(t *testing.T) {
 		poll/1:
 			meeting_id: 1
 			entitled_group_ids: [1]
+			pollmethod: Y
+			global_yes: true
+
 		user/1:
 			is_present_in_meeting_ids: [1]
 			group_$1_ids: [1]
@@ -270,8 +273,7 @@ func TestVoteVote(t *testing.T) {
 	})
 }
 
-func TestVoteDelegation(t *testing.T) {
-	// All votes are from user 1 to poll 1 which is in meeting 1.
+func TestVoteDelegationAndGroup(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		data string
@@ -285,6 +287,9 @@ func TestVoteDelegation(t *testing.T) {
 			poll/1:
 				meeting_id: 1
 				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+
 			user/1:
 				is_present_in_meeting_ids: [1]
 				group_$1_ids: [1]
@@ -300,6 +305,9 @@ func TestVoteDelegation(t *testing.T) {
 			poll/1:
 				meeting_id: 1
 				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+
 			user/1:
 				is_present_in_meeting_ids: []
 				group_$1_ids: [1]
@@ -315,6 +323,9 @@ func TestVoteDelegation(t *testing.T) {
 			poll/1:
 				meeting_id: 1
 				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+
 			user/1:
 				is_present_in_meeting_ids: [1]
 				group_$1_ids: []
@@ -330,6 +341,9 @@ func TestVoteDelegation(t *testing.T) {
 			poll/1:
 				meeting_id: 1
 				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+
 			user/1:
 				is_present_in_meeting_ids: [1]
 				group_$1_ids: [1]
@@ -345,6 +359,9 @@ func TestVoteDelegation(t *testing.T) {
 			poll/1:
 				meeting_id: 1
 				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+
 			user/1/is_present_in_meeting_ids: [1]
 			user/2/group_$1_ids: [1]
 			`,
@@ -359,6 +376,9 @@ func TestVoteDelegation(t *testing.T) {
 			poll/1:
 				meeting_id: 1
 				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+
 			user/1/is_present_in_meeting_ids: [1]
 			user/2:
 				vote_delegated_$1_to_id: 1
@@ -375,6 +395,9 @@ func TestVoteDelegation(t *testing.T) {
 			poll/1:
 				meeting_id: 1
 				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+
 			user/1/is_present_in_meeting_ids: [1]
 			user/2:
 				vote_delegated_$1_to_id: 1
