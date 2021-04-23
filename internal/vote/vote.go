@@ -114,38 +114,69 @@ func (v *Vote) Clear(ctx context.Context, pollID int) error {
 	return nil
 }
 
+func isPresent(meetingID int, presentMeetings []int) bool {
+	for _, present := range presentMeetings {
+		if present == meetingID {
+			return true
+		}
+	}
+	return false
+}
+
 // Vote validates and saves the vote.
 func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) error {
 	fetcher := datastore.NewFetcher(v.ds)
-	var config PollConfig
-	fetcher.Object(ctx, &config, "poll/%d", pollID)
+	var poll PollConfig
+	fetcher.Object(ctx, &poll, "poll/%d", pollID)
+	presentMeetings := fetcher.Ints(ctx, "user/%d/is_present_in_meeting_ids", requestUser)
 	if err := fetcher.Error(); err != nil {
 		return fmt.Errorf("fetching poll data: %w", err)
+	}
+
+	if !isPresent(poll.MeetingID, presentMeetings) {
+		return MessageError{ErrNotAllowed, fmt.Sprintf("You have to be present in meeting %d", poll.MeetingID)}
 	}
 
 	var vote voteData
 	if err := json.NewDecoder(r).Decode(&vote); err != nil {
 		return MessageError{ErrInvalid, fmt.Sprintf("invalid json: %v", err)}
 	}
+	if vote.UserID == 0 {
+		vote.UserID = requestUser
+	}
 
-	if err := vote.validate(config); err != nil {
+	if err := vote.validate(poll); err != nil {
 		return fmt.Errorf("validating vote: %w", err)
 	}
 
 	backend := v.longBackend
-	if config.Backend == "fast" {
+	if poll.Backend == "fast" {
 		backend = v.fastBackend
 	}
 
 	// TODO: Get UserID from vote and check that the user is allowed to vote.
 	//  * Get User vote weight
+	//  * Check that vote.user is in correct group (poll/entitled_group_ids)
 	//  * Build VoteObject with 'requestUser', 'voteUser', 'value' and 'weight'
 	//  * Remove requestUser and voteUser in anonymous votes
 	//  * Check config users_activate_vote_weight and set weight to 1_000_000 if not set.
 	//  * Save vote_count
-	userID := requestUser
 
-	if err := backend.Vote(ctx, pollID, userID, vote.original); err != nil {
+	if vote.UserID != requestUser {
+		delegation := fetcher.Int(ctx, "user/%d/vote_delegated_$%d_to_id", vote.UserID, poll.MeetingID)
+		if err := fetcher.Error(); err != nil {
+			var errNotExist datastore.DoesNotExistError
+			if !errors.As(err, &errNotExist) {
+				return fmt.Errorf("fetching delegation from user %d in meeting %d: %v", vote.UserID, poll.MeetingID, err)
+			}
+		}
+
+		if delegation != requestUser {
+			return MessageError{ErrNotAllowed, fmt.Sprintf("You can not vote for user %d", vote.UserID)}
+		}
+	}
+
+	if err := backend.Vote(ctx, pollID, vote.UserID, vote.Value.original); err != nil {
 		var errNotExist interface{ DoesNotExist() }
 		if errors.As(err, &errNotExist) {
 			return ErrNotExists
@@ -167,8 +198,26 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 	return nil
 }
 
-// voteData is the data a user sends as his vote.
 type voteData struct {
+	UserID int       `json:"user_id"`
+	Value  voteValue `json:"value"`
+}
+
+func (v *voteData) validate(config PollConfig) error {
+	// TODO: Validate
+
+	if v.Value.Type() != voteDataString {
+		return MessageError{ErrInvalid, "Data has to be a string."}
+	}
+
+	if v.Value.str != "Y" && v.Value.str != "N" && (v.Value.str != "A" || config.Method == "YNA") {
+		return MessageError{ErrInvalid, "Data does not fit the poll method."}
+	}
+	return nil
+}
+
+// voteData is the data a user sends as his vote.
+type voteValue struct {
 	str          string
 	optionAmount map[int]int
 	optionYNA    map[int]string
@@ -176,11 +225,11 @@ type voteData struct {
 	original json.RawMessage
 }
 
-func (v *voteData) MarshalJSON() ([]byte, error) {
+func (v *voteValue) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.original)
 }
 
-func (v *voteData) UnmarshalJSON(b []byte) error {
+func (v *voteValue) UnmarshalJSON(b []byte) error {
 	v.original = b
 
 	if err := json.Unmarshal(b, &v.str); err == nil {
@@ -201,19 +250,6 @@ func (v *voteData) UnmarshalJSON(b []byte) error {
 	return fmt.Errorf("unknown poll data: %s", b)
 }
 
-func (v *voteData) validate(config PollConfig) error {
-	// TODO: Validate
-
-	if v.Type() != voteDataString {
-		return MessageError{ErrInvalid, "Data has to be a string."}
-	}
-
-	if v.str != "Y" && v.str != "N" && (v.str != "A" || config.Method == "YNA") {
-		return MessageError{ErrInvalid, "Data does not fit the poll method."}
-	}
-	return nil
-}
-
 const (
 	voteDataUnknown = iota
 	voteDataString
@@ -228,7 +264,7 @@ const (
 	pollMethodN
 )
 
-func (v *voteData) Type() int {
+func (v *voteValue) Type() int {
 	if v.str != "" {
 		return voteDataString
 	}

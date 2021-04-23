@@ -13,15 +13,7 @@ import (
 	"github.com/OpenSlides/openslides-vote-service/internal/vote"
 )
 
-const (
-	validConfig1 = `{"content_object_id":"motion/1","backend":"fast","entitled_group_ids":[1]}`
-	validConfig2 = `{"content_object_id":"assignment/1","backend":"fast"}`
-)
-
 func TestVoteCreate(t *testing.T) {
-	closed := make(chan struct{})
-	defer close(closed)
-
 	backend := memory.New()
 
 	ds := StubGetter{data: dsmock.YAMLData(`
@@ -137,9 +129,6 @@ func TestVoteCreateDSError(t *testing.T) {
 }
 
 func TestVoteStop(t *testing.T) {
-	closed := make(chan struct{})
-	defer close(closed)
-
 	backend := memory.New()
 	v := vote.New(backend, backend, &StubGetter{data: dsmock.YAMLData(`
 	poll/1/id: 1
@@ -180,9 +169,6 @@ func TestVoteStop(t *testing.T) {
 }
 
 func TestVoteClear(t *testing.T) {
-	closed := make(chan struct{})
-	defer close(closed)
-
 	backend := memory.New()
 	v := vote.New(backend, backend, &StubGetter{})
 
@@ -192,14 +178,16 @@ func TestVoteClear(t *testing.T) {
 }
 
 func TestVoteVote(t *testing.T) {
-	closed := make(chan struct{})
-	defer close(closed)
-
 	backend := memory.New()
-	v := vote.New(backend, backend, &StubGetter{})
+	v := vote.New(backend, backend, &StubGetter{
+		data: map[string]string{
+			"poll/1/meeting_id":                "1",
+			"user/1/is_present_in_meeting_ids": "[1]",
+		},
+	})
 
 	t.Run("Unknown poll", func(t *testing.T) {
-		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`"Y"`))
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{"value":"Y"}`))
 
 		if !errors.Is(err, vote.ErrNotExists) {
 			t.Errorf("Expected ErrNotExists, got: %v", err)
@@ -237,15 +225,14 @@ func TestVoteVote(t *testing.T) {
 	})
 
 	t.Run("Valid data", func(t *testing.T) {
-		// TODO: Fix format.
-		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`"Y"`))
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{"value":"Y"}`))
 		if err != nil {
 			t.Fatalf("Vote returned unexpected error: %v", err)
 		}
 	})
 
 	t.Run("User has voted", func(t *testing.T) {
-		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`"Y"`))
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{"value":"Y"}`))
 		if err == nil {
 			t.Fatalf("Vote returned no error")
 		}
@@ -263,7 +250,7 @@ func TestVoteVote(t *testing.T) {
 	t.Run("Poll is stopped", func(t *testing.T) {
 		backend.Stop(context.Background(), 1)
 
-		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`"Y"`))
+		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{"value":"Y"}`))
 		if err == nil {
 			t.Fatalf("Vote returned no error")
 		}
@@ -277,4 +264,91 @@ func TestVoteVote(t *testing.T) {
 			t.Errorf("Got error type `%s`, expected `%s`", errTyped.Type(), vote.ErrStopped.Type())
 		}
 	})
+}
+
+func TestVoteDelegation(t *testing.T) {
+	// All votes are from user 1 to poll 1 which is in meeting 1.
+	for _, tt := range []struct {
+		name string
+		data string
+		vote string
+
+		expectVoted int
+	}{
+		{
+			"Not delegated",
+			`
+			poll/1/meeting_id: 1
+			user/1/is_present_in_meeting_ids: [1]
+			`,
+			`{"value":"Y"}`,
+
+			1,
+		},
+
+		{
+			"Not delegated not present",
+			`
+			poll/1/meeting_id: 1
+			user/1/is_present_in_meeting_ids: []
+			`,
+			`{"value":"Y"}`,
+
+			0,
+		},
+
+		{
+			"Vote for self",
+			`
+			poll/1/meeting_id: 1
+			user/1/is_present_in_meeting_ids: [1]
+			`,
+			`{"user_id": 1, "value":"Y"}`,
+
+			1,
+		},
+
+		{
+			"Vote for other without delegation",
+			`
+			poll/1/meeting_id: 1
+			user/1/is_present_in_meeting_ids: [1]`,
+			`{"user_id": 2, "value":"Y"}`,
+
+			0,
+		},
+
+		{
+			"Vote for other with delegation",
+			`
+			poll/1/meeting_id: 1
+			user/1/is_present_in_meeting_ids: [1]
+			user/2/vote_delegated_$1_to_id: 1
+			`,
+			`{"user_id": 2, "value":"Y"}`,
+
+			2,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			backend := memory.New()
+			v := vote.New(backend, backend, &StubGetter{data: dsmock.YAMLData(tt.data)})
+			backend.Start(context.Background(), 1)
+
+			err := v.Vote(context.Background(), 1, 1, strings.NewReader(tt.vote))
+
+			if tt.expectVoted != 0 {
+				if err != nil {
+					t.Fatalf("Vote returned unexpected error: %v", err)
+				}
+
+				backend.AssertUserHasVoted(t, 1, tt.expectVoted)
+				return
+			}
+
+			if !errors.Is(err, vote.ErrNotAllowed) {
+				t.Fatalf("Expected NotAllowedError, got: %v", err)
+			}
+		})
+	}
 }

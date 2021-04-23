@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"testing"
 )
 
 // Backend is a simple (not concurent) vote backend that can be used for
@@ -81,6 +82,18 @@ func (b *Backend) Clear(ctx context.Context, pollID int) error {
 	delete(b.objects, pollID)
 	delete(b.state, pollID)
 	return nil
+}
+
+//AssertUserHasVoted is a method for the tests to check, if a user has voted.
+func (b *Backend) AssertUserHasVoted(t *testing.T, pollID, userID int) {
+	t.Helper()
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if !b.voted[pollID][userID] {
+		t.Errorf("User %d has not voted", userID)
+	}
 }
 
 type doesNotExistError struct {
