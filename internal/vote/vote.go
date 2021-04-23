@@ -123,6 +123,20 @@ func isPresent(meetingID int, presentMeetings []int) bool {
 	return false
 }
 
+// sliceMatch returns true, if g1 and g2 have at lease one same element.
+func sliceMatch(g1, g2 []int) bool {
+	set := make(map[int]bool, len(g1))
+	for _, e := range g1 {
+		set[e] = true
+	}
+	for _, e := range g2 {
+		if set[e] {
+			return true
+		}
+	}
+	return false
+}
+
 // Vote validates and saves the vote.
 func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) error {
 	fetcher := datastore.NewFetcher(v.ds)
@@ -156,7 +170,6 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 
 	// TODO: Get UserID from vote and check that the user is allowed to vote.
 	//  * Get User vote weight
-	//  * Check that vote.user is in correct group (poll/entitled_group_ids)
 	//  * Build VoteObject with 'requestUser', 'voteUser', 'value' and 'weight'
 	//  * Remove requestUser and voteUser in anonymous votes
 	//  * Check config users_activate_vote_weight and set weight to 1_000_000 if not set.
@@ -174,6 +187,10 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 		if delegation != requestUser {
 			return MessageError{ErrNotAllowed, fmt.Sprintf("You can not vote for user %d", vote.UserID)}
 		}
+	}
+
+	if !sliceMatch(fetcher.Ints(ctx, "user/%d/group_$%d_ids", vote.UserID, poll.MeetingID), poll.Groups) {
+		return MessageError{ErrNotAllowed, fmt.Sprintf("User %d is not allowed to vote", vote.UserID)}
 	}
 
 	if err := backend.Vote(ctx, pollID, vote.UserID, vote.Value.original); err != nil {

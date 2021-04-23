@@ -180,10 +180,14 @@ func TestVoteClear(t *testing.T) {
 func TestVoteVote(t *testing.T) {
 	backend := memory.New()
 	v := vote.New(backend, backend, &StubGetter{
-		data: map[string]string{
-			"poll/1/meeting_id":                "1",
-			"user/1/is_present_in_meeting_ids": "[1]",
-		},
+		data: dsmock.YAMLData(`
+		poll/1:
+			meeting_id: 1
+			entitled_group_ids: [1]
+		user/1:
+			is_present_in_meeting_ids: [1]
+			group_$1_ids: [1]
+		`),
 	})
 
 	t.Run("Unknown poll", func(t *testing.T) {
@@ -278,8 +282,12 @@ func TestVoteDelegation(t *testing.T) {
 		{
 			"Not delegated",
 			`
-			poll/1/meeting_id: 1
-			user/1/is_present_in_meeting_ids: [1]
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+			user/1:
+				is_present_in_meeting_ids: [1]
+				group_$1_ids: [1]
 			`,
 			`{"value":"Y"}`,
 
@@ -289,8 +297,27 @@ func TestVoteDelegation(t *testing.T) {
 		{
 			"Not delegated not present",
 			`
-			poll/1/meeting_id: 1
-			user/1/is_present_in_meeting_ids: []
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+			user/1:
+				is_present_in_meeting_ids: []
+				group_$1_ids: [1]
+			`,
+			`{"value":"Y"}`,
+
+			0,
+		},
+
+		{
+			"Not delegated not in group",
+			`
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+			user/1:
+				is_present_in_meeting_ids: [1]
+				group_$1_ids: []
 			`,
 			`{"value":"Y"}`,
 
@@ -300,8 +327,12 @@ func TestVoteDelegation(t *testing.T) {
 		{
 			"Vote for self",
 			`
-			poll/1/meeting_id: 1
-			user/1/is_present_in_meeting_ids: [1]
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+			user/1:
+				is_present_in_meeting_ids: [1]
+				group_$1_ids: [1]
 			`,
 			`{"user_id": 1, "value":"Y"}`,
 
@@ -311,8 +342,12 @@ func TestVoteDelegation(t *testing.T) {
 		{
 			"Vote for other without delegation",
 			`
-			poll/1/meeting_id: 1
-			user/1/is_present_in_meeting_ids: [1]`,
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+			user/1/is_present_in_meeting_ids: [1]
+			user/2/group_$1_ids: [1]
+			`,
 			`{"user_id": 2, "value":"Y"}`,
 
 			0,
@@ -321,13 +356,33 @@ func TestVoteDelegation(t *testing.T) {
 		{
 			"Vote for other with delegation",
 			`
-			poll/1/meeting_id: 1
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
 			user/1/is_present_in_meeting_ids: [1]
-			user/2/vote_delegated_$1_to_id: 1
+			user/2:
+				vote_delegated_$1_to_id: 1
+				group_$1_ids: [1]
 			`,
 			`{"user_id": 2, "value":"Y"}`,
 
 			2,
+		},
+
+		{
+			"Vote for other with delegation not in group",
+			`
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+			user/1/is_present_in_meeting_ids: [1]
+			user/2:
+				vote_delegated_$1_to_id: 1
+				group_$1_ids: []
+			`,
+			`{"user_id": 2, "value":"Y"}`,
+
+			0,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
