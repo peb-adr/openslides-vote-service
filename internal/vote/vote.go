@@ -114,29 +114,6 @@ func (v *Vote) Clear(ctx context.Context, pollID int) error {
 	return nil
 }
 
-func isPresent(meetingID int, presentMeetings []int) bool {
-	for _, present := range presentMeetings {
-		if present == meetingID {
-			return true
-		}
-	}
-	return false
-}
-
-// sliceMatch returns true, if g1 and g2 have at lease one same element.
-func sliceMatch(g1, g2 []int) bool {
-	set := make(map[int]bool, len(g1))
-	for _, e := range g1 {
-		set[e] = true
-	}
-	for _, e := range g2 {
-		if set[e] {
-			return true
-		}
-	}
-	return false
-}
-
 // Vote validates and saves the vote.
 func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) error {
 	fetcher := datastore.NewFetcher(v.ds)
@@ -168,13 +145,6 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 		backend = v.fastBackend
 	}
 
-	// TODO: Get UserID from vote and check that the user is allowed to vote.
-	//  * Get User vote weight
-	//  * Build VoteObject with 'requestUser', 'voteUser', 'value' and 'weight'
-	//  * Remove requestUser and voteUser in anonymous votes
-	//  * Check config users_activate_vote_weight and set weight to 1_000_000 if not set.
-	//  * Save vote_count
-
 	if vote.UserID != requestUser {
 		delegation := fetcher.Int(ctx, "user/%d/vote_delegated_$%d_to_id", vote.UserID, poll.MeetingID)
 		if err := fetcher.Error(); err != nil {
@@ -189,11 +159,64 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 		}
 	}
 
-	if !sliceMatch(fetcher.Ints(ctx, "user/%d/group_$%d_ids", vote.UserID, poll.MeetingID), poll.Groups) {
+	groupIDs := fetcher.Ints(ctx, "user/%d/group_$%d_ids", vote.UserID, poll.MeetingID)
+	if err := fetcher.Error(); err != nil {
+		var errNotExist datastore.DoesNotExistError
+		if !errors.As(err, &errNotExist) {
+			return fmt.Errorf("fetching groups of user %d in meeting %d: %v", vote.UserID, poll.MeetingID, err)
+		}
+	}
+
+	if !sliceMatch(groupIDs, poll.Groups) {
 		return MessageError{ErrNotAllowed, fmt.Sprintf("User %d is not allowed to vote", vote.UserID)}
 	}
 
-	if err := backend.Vote(ctx, pollID, vote.UserID, vote.Value.original); err != nil {
+	var voteWeightConfig bool
+	fetcher.Value(ctx, &voteWeightConfig, "meeting/%d/users_enable_vote_weight", poll.MeetingID)
+	if err := fetcher.Error(); err != nil {
+		var errNotExist datastore.DoesNotExistError
+		if !errors.As(err, &errNotExist) {
+			return fmt.Errorf("fetching users_enable_vote_weight of meeting %d: %v", poll.MeetingID, err)
+		}
+	}
+
+	// voteData.Weight is a DecimalField with 6 zeros.
+	voteWeight := 1_000_000
+
+	if voteWeightConfig {
+		voteWeight = fetcher.Int(ctx, "user/%d/vote_weight_$%d", vote.UserID, poll.MeetingID)
+		if err := fetcher.Error(); err != nil {
+			var errNotExist datastore.DoesNotExistError
+			if !errors.As(err, &errNotExist) {
+				return fmt.Errorf("fetching groups of user %d in meeting %d: %v", vote.UserID, poll.MeetingID, err)
+			}
+			voteWeight = 1_000_000
+		}
+	}
+
+	voteData := struct {
+		RequestUser int             `json:"request_user_id,omitempty"`
+		VoteUser    int             `json:"vote_user_id,omitempty"`
+		Value       json.RawMessage `json:"value"`
+		Weight      int             `json:"weight"`
+	}{
+		requestUser,
+		vote.UserID,
+		vote.Value.original,
+		voteWeight,
+	}
+
+	if poll.Type == "pseudoanonymous" {
+		voteData.RequestUser = 0
+		voteData.VoteUser = 0
+	}
+
+	bs, err := json.Marshal(voteData)
+	if err != nil {
+		return fmt.Errorf("decoding vote data: %w", err)
+	}
+
+	if err := backend.Vote(ctx, pollID, vote.UserID, bs); err != nil {
 		var errNotExist interface{ DoesNotExist() }
 		if errors.As(err, &errNotExist) {
 			return ErrNotExists
@@ -212,12 +235,53 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 		return fmt.Errorf("save vote: %w", err)
 	}
 
+	// TODO: Save vote_count
+
 	return nil
 }
 
+// Backend is a storage for the poll options.
+type Backend interface {
+	// Start opens the poll for votes. To start a poll that is already started
+	// is ok. To start an stopped poll has to return an error with a method
+	// `Stopped()`.
+	Start(ctx context.Context, pollID int) error
+
+	// Vote saves vote data into the backend. The backend has to check that the
+	// poll is started and the userID has not voted before.
+	//
+	// If the user has already voted, an Error with method `DoupleVote()` has to
+	// be returned. If the poll has not started, an error with the method
+	// `DoesNotExist()` is required. An a stopped vote, it has to be `Stopped()`.
+	Vote(ctx context.Context, pollID int, userID int, object []byte) error
+
+	// Stop ends a poll and returns all poll objects. It is ok the call Stop on
+	// a stopped poll. On a unknown poll `DoesNotExist()` has to be returned.
+	Stop(ctx context.Context, pollID int) ([][]byte, error)
+
+	// Clear has to remove all data. It can be called on a started or stopped or
+	// non existing poll.
+	Clear(ctx context.Context, pollID int) error
+}
+
+type pollConfig struct {
+	ID            int    `json:"id"`
+	MeetingID     int    `json:"meeting_id"`
+	Backend       string `json:"backend"`
+	Type          string `json:"type"`
+	Method        string `json:"pollmethod"`
+	Groups        []int  `json:"entitled_group_ids"`
+	GlobalYes     bool   `json:"global_yes"`
+	GlobalNo      bool   `json:"global_no"`
+	GlobalAbstain bool   `json:"global_abstain"`
+	MinAmount     int    `json:"min_votes_amount"`
+	MaxAmount     int    `json:"max_votes_amount"`
+	Options       []int  `json:"option_ids"`
+}
+
 type ballot struct {
-	UserID int       `json:"user_id"`
-	Value  voteValue `json:"value"`
+	UserID int         `json:"user_id"`
+	Value  ballotValue `json:"value"`
 }
 
 func (v *ballot) validate(poll pollConfig) error {
@@ -310,7 +374,7 @@ func (v *ballot) validate(poll pollConfig) error {
 }
 
 // voteData is the data a user sends as his vote.
-type voteValue struct {
+type ballotValue struct {
 	str          string
 	optionAmount map[int]int
 	optionYNA    map[int]string
@@ -318,11 +382,11 @@ type voteValue struct {
 	original json.RawMessage
 }
 
-func (v *voteValue) MarshalJSON() ([]byte, error) {
+func (v *ballotValue) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.original)
 }
 
-func (v *voteValue) UnmarshalJSON(b []byte) error {
+func (v *ballotValue) UnmarshalJSON(b []byte) error {
 	v.original = b
 
 	if err := json.Unmarshal(b, &v.str); err == nil {
@@ -351,7 +415,7 @@ const (
 	ballotValueOptionString
 )
 
-func (v *voteValue) Type() int {
+func (v *ballotValue) Type() int {
 	if v.str != "" {
 		return ballotValueString
 	}
@@ -367,42 +431,25 @@ func (v *voteValue) Type() int {
 	return ballotValueUnknown
 }
 
-// Backend is a storage for the poll options.
-type Backend interface {
-	// Start opens the poll for votes. To start a poll that is already started
-	// is ok. To start an stopped poll has to return an error with a method
-	// `Stopped()`.
-	Start(ctx context.Context, pollID int) error
-
-	// Vote saves vote data into the backend. The backend has to check that the
-	// poll is started and the userID has not voted before.
-	//
-	// If the user has already voted, an Error with method `DoupleVote()` has to
-	// be returned. If the poll has not started, an error with the method
-	// `DoesNotExist()` is required. An a stopped vote, it has to be `Stopped()`.
-	Vote(ctx context.Context, pollID int, userID int, object []byte) error
-
-	// Stop ends a poll and returns all poll objects. It is ok the call Stop on
-	// a stopped poll. On a unknown poll `DoesNotExist()` has to be returned.
-	Stop(ctx context.Context, pollID int) ([][]byte, error)
-
-	// Clear has to remove all data. It can be called on a started or stopped or
-	// non existing poll.
-	Clear(ctx context.Context, pollID int) error
+func isPresent(meetingID int, presentMeetings []int) bool {
+	for _, present := range presentMeetings {
+		if present == meetingID {
+			return true
+		}
+	}
+	return false
 }
 
-// pollConfig is data needed to validate a vote.
-type pollConfig struct {
-	ID            int    `json:"id"`
-	MeetingID     int    `json:"meeting_id"`
-	Backend       string `json:"backend"`
-	PollType      string `json:"type"`
-	Method        string `json:"pollmethod"`
-	Groups        []int  `json:"entitled_group_ids"`
-	GlobalYes     bool   `json:"global_yes"`
-	GlobalNo      bool   `json:"global_no"`
-	GlobalAbstain bool   `json:"global_abstain"`
-	MinAmount     int    `json:"min_votes_amount"`
-	MaxAmount     int    `json:"max_votes_amount"`
-	Options       []int  `json:"option_ids"`
+// sliceMatch returns true, if g1 and g2 have at lease one same element.
+func sliceMatch(g1, g2 []int) bool {
+	set := make(map[int]bool, len(g1))
+	for _, e := range g1 {
+		set[e] = true
+	}
+	for _, e := range g2 {
+		if set[e] {
+			return true
+		}
+	}
+	return false
 }

@@ -6,21 +6,61 @@ for an electonic poll.
 
 ## Install and Start
 
-TODO
+### With Golang
+
+```
+go build ./cmd/vote
+./vote
+```
+
+
+### With Docker
+
+The docker build uses the redis messaging service, the auth token and the real
+datastore service as default. Either configure it to use the fake services (see
+environment variables below) or make sure the service inside the docker
+container can connect to redis and the datastore-reader. For example with the
+docker argument --network host. The auth-secrets have to given as a file.
+
+```
+docker build . --tag openslides-vote
+printf "my_token_key" > auth_token_key 
+printf "my_cookie_key" > auth_cookie_key
+docker run --network host -v $PWD/auth_token_key:/run/secrets/auth_token_key -v $PWD/auth_cookie_key:/run/secrets/auth_cookie_key openslides-vote
+```
+
+It uses the host network to connect to redis.
+
+
+### With Auto Restart
+
+To restart the service when ever a source file has shanged, the tool
+[CompileDaemon](https://github.com/githubnemo/CompileDaemon) can help.
+
+```
+go install github.com/githubnemo/CompileDaemon@latest
+CompileDaemon -log-prefix=false -build "go build ./cmd/vote" -command "./vote"
+```
+
+The make target `build-dev` creates a docker image that uses this tool. The
+environment varialbe `OPENSLIDES_DEVELOPMENT` is used to use default auth keys.
+
+```
+make build-dev
+docker run --network host --env OPENSLIDES_DEVELOPMENT=true openslides-vote-dev
+```
 
 
 ## Example Request with CURL
 
 ### Start a Poll
 
-To start a poll a POST request has to be send to the create-url. The body has to
-be a valid poll-config.
+To start a poll a POST request has to be send to the create-url.
 
-To send the same request twice is ok. But to send a different poll-config is an
-error.
+To send the same request twice is ok.
 
 ```
-curl localhost:9013/internal/vote/create?pid=1 -d '{"content_object_id":"motion/2", "backend":"fast"}'
+curl -X POST localhost:9013/internal/vote/create?pid=1 
 ```
 
 
@@ -28,13 +68,13 @@ curl localhost:9013/internal/vote/create?pid=1 -d '{"content_object_id":"motion/
 
 A vote-request is a post request with the ballot as body. Only logged in users
 can vote. The body has to be valid json. For example for the value 'Y' you have
-to send `"Y"`.
+to send `{"value":"Y"}`.
 
 This handler is not idempotent. If the same user sends the same data twice, it
 is an error.
 
 ```
-curl localhost:9013/system/vote?pid=1 -d '"Y"'
+curl localhost:9013/system/vote?pid=1 -d '{"value":"Y"}'
 ```
 
 
@@ -46,7 +86,7 @@ stop request is a POST request without a body.
 A stop request can be send many times and will return the same data again.
 
 ```
-curl localhost:9013/internal/vote/stop?pid=1 -d ''
+curl -X POST localhost:9013/internal/vote/stop?pid=1 -
 ```
 
 
@@ -58,7 +98,7 @@ especially important on fast votes to remove the mapping between the user id and
 the vote. The clear requet is idempotent.
 
 ```
-curl localhost:9013/internal/vote/clear?pid=1 -d ''
+curl -X POST localhost:9013/internal/vote/clear?pid=1 
 ```
 
 
