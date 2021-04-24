@@ -46,6 +46,10 @@ func TestVoteCreate(t *testing.T) {
 	})
 
 	t.Run("Create a stopped poll", func(t *testing.T) {
+		if err := v.Create(context.Background(), 2); err != nil {
+			t.Errorf("Create returned unexpected error: %v", err)
+		}
+
 		if _, err := backend.Stop(context.Background(), 2); err != nil {
 			t.Fatalf("Stop returned unexpected error: %v", err)
 		}
@@ -137,8 +141,9 @@ func TestVoteStop(t *testing.T) {
 
 	t.Run("Unknown poll", func(t *testing.T) {
 		buf := new(bytes.Buffer)
-		if err := v.Stop(context.Background(), 1, buf); err != nil {
-			t.Errorf("Stopping a unknown poll is not an error, got: %v", err)
+		err := v.Stop(context.Background(), 1, buf)
+		if !errors.Is(err, vote.ErrNotExists) {
+			t.Errorf("Stopping an unknown poll has to return an ErrNotExists, got: %v", err)
 		}
 	})
 

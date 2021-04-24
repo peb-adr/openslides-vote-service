@@ -31,8 +31,11 @@ func New() *Backend {
 
 // Start opens opens a poll.
 func (b *Backend) Start(ctx context.Context, pollID int) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if b.state[pollID] == 2 {
-		return stoppedError{fmt.Errorf("poll is stopped")}
+		return nil
 	}
 	b.state[pollID] = 1
 	return nil
@@ -68,6 +71,10 @@ func (b *Backend) Vote(ctx context.Context, pollID int, userID int, object []byt
 func (b *Backend) Stop(ctx context.Context, pollID int) ([][]byte, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	if b.state[pollID] == 0 {
+		return nil, doesNotExistError{fmt.Errorf("Poll does not exist")}
+	}
 
 	b.state[pollID] = 2
 	return b.objects[pollID], nil

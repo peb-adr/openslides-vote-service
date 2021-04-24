@@ -53,11 +53,6 @@ func (v *Vote) Create(ctx context.Context, pollID int) error {
 	}
 
 	if err := backend.Start(ctx, pollID); err != nil {
-		var errStopped interface{ Stopped() }
-		if errors.As(err, &errStopped) {
-			// Create works on a stopped poll.
-			return nil
-		}
 		return fmt.Errorf("starting poll in the backend: %w", err)
 	}
 
@@ -87,6 +82,11 @@ func (v *Vote) Stop(ctx context.Context, pollID int, w io.Writer) error {
 
 	objects, err := backend.Stop(ctx, pollID)
 	if err != nil {
+		var errNotExist interface{ DoesNotExist() }
+		if errors.As(err, &errNotExist) {
+			return MessageError{ErrNotExists, fmt.Sprintf("Poll %d does not exist in the datastore", pollID)}
+		}
+
 		return fmt.Errorf("fetching vote objects: %w", err)
 	}
 
@@ -243,8 +243,8 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) e
 // Backend is a storage for the poll options.
 type Backend interface {
 	// Start opens the poll for votes. To start a poll that is already started
-	// is ok. To start an stopped poll has to return an error with a method
-	// `Stopped()`.
+	// is ok. To start an stopped poll is also ok, but it has to be a noop (the
+	// stop-state does not change).
 	Start(ctx context.Context, pollID int) error
 
 	// Vote saves vote data into the backend. The backend has to check that the

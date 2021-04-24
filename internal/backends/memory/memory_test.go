@@ -7,7 +7,7 @@ import (
 	"github.com/OpenSlides/openslides-vote-service/internal/backends/test"
 )
 
-func TestBakend(t *testing.T) {
+func TestBackend(t *testing.T) {
 	m := memory.New()
 
 	test.Backend(t, m)

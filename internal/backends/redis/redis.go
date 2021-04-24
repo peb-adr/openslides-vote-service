@@ -40,37 +40,6 @@ func New(addr string) *Backend {
 	}
 }
 
-// luaStartPoll checks that a poll is not stopped and starts it in other case.
-//
-// KEYS[1] == state key
-//
-// Returns 0 on error and 1 on success.
-const luaStartPoll = `
-local state = redis.call("GET",KEYS[1])
-if state == "2" then
-	return 0
-end
-redis.call("SET",KEYS[1],"1")
-return 1
-`
-
-// Start starts the poll.
-func (b *Backend) Start(ctx context.Context, pollID int) error {
-	conn := b.pool.Get()
-	defer conn.Close()
-
-	sKey := fmt.Sprintf(keyState, pollID)
-
-	success, err := redis.Bool(conn.Do("EVAL", luaStartPoll, 1, sKey))
-	if err != nil {
-		return fmt.Errorf("set state key to 1: %w", err)
-	}
-	if !success {
-		return stoppedError{fmt.Errorf("set state not successfull")}
-	}
-	return nil
-}
-
 // Wait blocks until a connection to redis can be established.
 func (b *Backend) Wait(ctx context.Context, log func(format string, a ...interface{})) {
 	for ctx.Err() == nil {
@@ -85,6 +54,19 @@ func (b *Backend) Wait(ctx context.Context, log func(format string, a ...interfa
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+// Start starts the poll.
+func (b *Backend) Start(ctx context.Context, pollID int) error {
+	conn := b.pool.Get()
+	defer conn.Close()
+
+	sKey := fmt.Sprintf(keyState, pollID)
+
+	if _, err := conn.Do("SETNX", sKey, 1); err != nil {
+		return fmt.Errorf("set state key to 1: %w", err)
+	}
+	return nil
 }
 
 // luaVoteScript checks for condition and saves a vote if all checks pass.
@@ -153,8 +135,12 @@ func (b *Backend) Stop(ctx context.Context, pollID int) ([][]byte, error) {
 	vKey := fmt.Sprintf(keyVote, pollID)
 	sKey := fmt.Sprintf(keyState, pollID)
 
-	if _, err := conn.Do("SET", sKey, "2"); err != nil {
-		return nil, fmt.Errorf("set key %s to 2", sKey)
+	_, err := redis.String(conn.Do("SET", sKey, "2", "XX"))
+	if err != nil {
+		if err == redis.ErrNil {
+			return nil, doesNotExistError{fmt.Errorf("poll does not exist")}
+		}
+		return nil, fmt.Errorf("set key %s to 2: %w", sKey, err)
 	}
 
 	voteObjects, err := redis.ByteSlices(conn.Do("HVALS", vKey))

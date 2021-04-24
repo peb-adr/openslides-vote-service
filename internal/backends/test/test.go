@@ -30,10 +30,25 @@ func Backend(t *testing.T, backend vote.Backend) {
 
 		t.Run("Start a stopped poll", func(t *testing.T) {
 			backend.Stop(context.Background(), 1)
-			err := backend.Start(context.Background(), 1)
+			if err := backend.Start(context.Background(), 1); err != nil {
+				t.Errorf("Start an started poll returned error: %v", err)
+			}
+
+			err := backend.Vote(context.Background(), 1, 5, []byte("my vote"))
 			var errStopped interface{ Stopped() }
 			if !errors.As(err, &errStopped) {
-				t.Errorf("Start a stopped poll should returnd an error with method Stopped(). Got: %v", err)
+				t.Errorf("The stopped poll has to be stopped after calling start. Vote returned error: %v", err)
+			}
+		})
+	})
+
+	t.Run("Stop", func(t *testing.T) {
+		t.Run("poll unknown", func(t *testing.T) {
+			_, err := backend.Stop(context.Background(), 100)
+
+			var errDoesNotExist interface{ DoesNotExist() }
+			if !errors.As(err, &errDoesNotExist) {
+				t.Fatalf("Stop a unknown poll has to return an error with a method DoesNotExist(), got: %v", err)
 			}
 		})
 	})
@@ -44,7 +59,7 @@ func Backend(t *testing.T, backend vote.Backend) {
 
 			var errDoesNotExist interface{ DoesNotExist() }
 			if !errors.As(err, &errDoesNotExist) {
-				t.Fatalf("Vote on a not started poll should return a Vote with a method DoesNotExist(), got: %v", err)
+				t.Fatalf("Vote on a not started poll has to return an error with a method DoesNotExist(), got: %v", err)
 			}
 		})
 
@@ -89,6 +104,8 @@ func Backend(t *testing.T, backend vote.Backend) {
 		})
 
 		t.Run("on stopped vote", func(t *testing.T) {
+			backend.Start(context.Background(), 4)
+
 			if _, err := backend.Stop(context.Background(), 4); err != nil {
 				t.Fatalf("Stop returned unexpected error: %v", err)
 			}
@@ -107,19 +124,17 @@ func Backend(t *testing.T, backend vote.Backend) {
 	})
 
 	t.Run("Clear removes vote data", func(t *testing.T) {
+		backend.Start(context.Background(), 5)
 		backend.Vote(context.Background(), 5, 5, []byte("my vote"))
-
-		if _, err := backend.Stop(context.Background(), 5); err != nil {
-			t.Fatalf("Stop returned unexpected error: %v", err)
-		}
 
 		if err := backend.Clear(context.Background(), 5); err != nil {
 			t.Fatalf("Clear returned unexpected error: %v", err)
 		}
 
 		bs, err := backend.Stop(context.Background(), 5)
-		if err != nil {
-			t.Fatalf("Stop after Clear returned unexpected error: %v", err)
+		var errDoesNotExist interface{ DoesNotExist() }
+		if !errors.As(err, &errDoesNotExist) {
+			t.Fatalf("Stop a cleared poll has to return an error with a method DoesNotExist(), got: %v", err)
 		}
 
 		if len(bs) != 0 {
