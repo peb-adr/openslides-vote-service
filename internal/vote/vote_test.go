@@ -50,7 +50,7 @@ func TestVoteCreate(t *testing.T) {
 			t.Errorf("Create returned unexpected error: %v", err)
 		}
 
-		if _, err := backend.Stop(context.Background(), 2); err != nil {
+		if _, _, err := backend.Stop(context.Background(), 2); err != nil {
 			t.Fatalf("Stop returned unexpected error: %v", err)
 		}
 
@@ -160,7 +160,7 @@ func TestVoteStop(t *testing.T) {
 			t.Fatalf("Stop returned unexpected error: %v", err)
 		}
 
-		expect := `["polldata1","polldata2"]`
+		expect := `{"votes":["polldata1","polldata2"],"user_ids":[1,2]}`
 		if got := strings.TrimSpace(buf.String()); got != expect {
 			t.Errorf("Stop wrote `%s`, expected `%s`", got, expect)
 		}

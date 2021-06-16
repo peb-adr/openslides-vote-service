@@ -6,11 +6,12 @@ package memory
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"testing"
 )
 
-// Backend is a simple (not concurent) vote backend that can be used for
+// Backend is a simple vote backend that can be used for
 // testing.
 type Backend struct {
 	mu      sync.Mutex
@@ -71,17 +72,23 @@ func (b *Backend) Vote(ctx context.Context, pollID int, userID int, object []byt
 	return nil
 }
 
-// Stop stopps a poll
-func (b *Backend) Stop(ctx context.Context, pollID int) ([][]byte, error) {
+// Stop stopps a poll.
+func (b *Backend) Stop(ctx context.Context, pollID int) ([][]byte, []int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	if b.state[pollID] == 0 {
-		return nil, doesNotExistError{fmt.Errorf("Poll does not exist")}
+		return nil, nil, doesNotExistError{fmt.Errorf("Poll does not exist")}
 	}
 
 	b.state[pollID] = 2
-	return b.objects[pollID], nil
+
+	userIDs := make([]int, 0, len(b.voted[pollID]))
+	for id := range b.voted[pollID] {
+		userIDs = append(userIDs, id)
+	}
+	sort.Ints(userIDs)
+	return b.objects[pollID], userIDs, nil
 }
 
 // Clear removes all data for a poll.
