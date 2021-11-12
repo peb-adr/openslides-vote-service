@@ -237,6 +237,27 @@ func (b *Backend) ClearAll(ctx context.Context) error {
 	return nil
 }
 
+// VotedPolls tells for a list of poll IDs if the given userID has already
+// voted.
+//
+// This command is not atomic.
+func (b *Backend) VotedPolls(ctx context.Context, pollIDs []int, userID int) (map[int]bool, error) {
+	conn := b.pool.Get()
+	defer conn.Close()
+
+	out := make(map[int]bool)
+	for _, pollID := range pollIDs {
+		key := fmt.Sprintf(keyVote, pollID)
+		log.Debug("Redis: HEXISTS %s %d", key, userID)
+		exist, err := redis.Bool(conn.Do("HEXISTS", key, userID))
+		if err != nil {
+			return nil, fmt.Errorf("hexists for key %s: %w", key, err)
+		}
+		out[pollID] = exist
+	}
+	return out, nil
+}
+
 type doesNotExistError struct {
 	error
 }
