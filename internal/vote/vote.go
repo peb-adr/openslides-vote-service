@@ -462,19 +462,20 @@ type Counter interface {
 }
 
 type pollConfig struct {
-	id            int
-	meetingID     int
-	backend       string
-	pollType      string
-	method        string
-	groups        []int
-	globalYes     bool
-	globalNo      bool
-	globalAbstain bool
-	minAmount     int
-	maxAmount     int
-	options       []int
-	state         string
+	id                int
+	meetingID         int
+	backend           string
+	pollType          string
+	method            string
+	groups            []int
+	globalYes         bool
+	globalNo          bool
+	globalAbstain     bool
+	minAmount         int
+	maxAmount         int
+	maxVotesPerOption int
+	options           []int
+	state             string
 }
 
 func loadPoll(ctx context.Context, ds *datastore.Request, pollID int) (pollConfig, error) {
@@ -489,6 +490,7 @@ func loadPoll(ctx context.Context, ds *datastore.Request, pollID int) (pollConfi
 	ds.Poll_GlobalAbstain(pollID).Lazy(&p.globalAbstain)
 	ds.Poll_MinVotesAmount(pollID).Lazy(&p.minAmount)
 	ds.Poll_MaxVotesAmount(pollID).Lazy(&p.maxAmount)
+	ds.Poll_MaxVotesPerOption(pollID).Lazy(&p.maxVotesPerOption)
 	ds.Poll_OptionIDs(pollID).Lazy(&p.options)
 	ds.Poll_State(pollID).Lazy(&p.state)
 
@@ -594,6 +596,10 @@ func (v *ballot) validate(poll pollConfig) error {
 		poll.maxAmount = 1
 	}
 
+	if poll.maxVotesPerOption == 0 {
+		poll.maxVotesPerOption = 1
+	}
+
 	allowedOptions := make(map[int]bool, len(poll.options))
 	for _, o := range poll.options {
 		allowedOptions[o] = true
@@ -623,6 +629,10 @@ func (v *ballot) validate(poll pollConfig) error {
 			for optionID, amount := range v.Value.optionAmount {
 				if amount < 0 {
 					return InvalidVote("Your vote for option %d has to be >= 0", optionID)
+				}
+
+				if amount > poll.maxVotesPerOption {
+					return InvalidVote("Your vote for option %d has to be <= %d", optionID, poll.maxVotesPerOption)
 				}
 
 				if !allowedOptions[optionID] {
