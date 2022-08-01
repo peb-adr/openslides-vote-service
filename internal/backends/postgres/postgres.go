@@ -102,19 +102,16 @@ func (b *Backend) Start(ctx context.Context, pollID int) error {
 //
 // If an transaction error happens, the vote is saved again. This is done until
 // either the vote is saved or the given context is canceled.
-func (b *Backend) Vote(ctx context.Context, pollID int, userID int, object []byte) (int, error) {
-	var count int
+func (b *Backend) Vote(ctx context.Context, pollID int, userID int, object []byte) error {
 	err := continueOnTransactionError(ctx, func() error {
-		c, err := b.voteOnce(ctx, pollID, userID, object)
-		count = c
-		return err
+		return b.voteOnce(ctx, pollID, userID, object)
 	})
 
-	return count, err
+	return err
 }
 
 // voteOnce tries to add the vote once.
-func (b *Backend) voteOnce(ctx context.Context, pollID int, userID int, object []byte) (count int, err error) {
+func (b *Backend) voteOnce(ctx context.Context, pollID int, userID int, object []byte) (err error) {
 	log.Debug("SQL: Begin transaction for vote")
 	defer func() {
 		log.Debug("SQL: End transaction for vote with error: %v", err)
@@ -161,14 +158,13 @@ func (b *Backend) voteOnce(ctx context.Context, pollID int, userID int, object [
 				return fmt.Errorf("writing vote: %w", err)
 			}
 
-			count = uIDs.len()
 			return nil
 		},
 	)
 	if err != nil {
-		return 0, fmt.Errorf("running transaction: %w", err)
+		return fmt.Errorf("running transaction: %w", err)
 	}
-	return count, nil
+	return nil
 }
 
 // Stop ends a poll and returns all vote objects and users who have voted.
@@ -322,7 +318,6 @@ func (b *Backend) VotedPolls(ctx context.Context, pollIDs []int, userID int) (ou
 	}
 
 	out = make(map[int]bool, len(pollIDs))
-
 	for rows.Next() {
 		var pid int
 		var uIDs userIDs
@@ -337,6 +332,28 @@ func (b *Backend) VotedPolls(ctx context.Context, pollIDs []int, userID int) (ou
 		out[id] = out[id] || false
 	}
 	return out, nil
+}
+
+// VoteCount returns the amout of votes for each vote in the backend.
+func (b *Backend) VoteCount(ctx context.Context) (map[int]int, error) {
+	sql := `select poll_id, count(poll_id) from vote.objects GROUP BY poll_id;`
+
+	rows, err := b.pool.Query(ctx, sql)
+	if err != nil {
+		return nil, fmt.Errorf("fetching vote count from poll objects: %w", err)
+	}
+
+	count := make(map[int]int)
+	for rows.Next() {
+		var pollID int
+		var amount int
+		if err := rows.Scan(&pollID, &amount); err != nil {
+			return nil, fmt.Errorf("parsind row: %w", err)
+		}
+		count[pollID] = amount
+	}
+
+	return count, nil
 }
 
 // ContinueOnTransactionError runs the given many times until is does not return
