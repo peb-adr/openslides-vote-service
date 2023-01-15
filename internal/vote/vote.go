@@ -210,6 +210,22 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) (
 		return MessageError{ErrNotAllowed, "Votes for anonymous user are not allowed"}
 	}
 
+	voteMeetingUserIDs, err := ds.User_MeetingUserIDs(voteUser).Value(ctx)
+	var voteMeetingUserID int
+	for _, muid := range voteMeetingUserIDs {
+		mid := ds.MeetingUser_MeetingID(muid).ErrorLater(ctx)
+		if mid == poll.meetingID {
+			voteMeetingUserID = muid
+			break
+		}
+	}
+	if err := ds.Err(); err != nil {
+		return fmt.Errorf("getting meeting_user: %w", err)
+	}
+	if voteMeetingUserID == 0 {
+		return MessageError{ErrNotAllowed, "You are not in the right meeting"}
+	}
+
 	if err := vote.validate(poll); err != nil {
 		return fmt.Errorf("validating vote: %w", err)
 	}
@@ -226,23 +242,18 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) (
 			return MessageError{ErrNotAllowed, fmt.Sprintf("Vote delegation is not activated in meeting %d", poll.meetingID)}
 		}
 
-		delegation, err := ds.User_VoteDelegatedToID(voteUser, poll.meetingID).Value(ctx)
+		delegation, found, err := ds.MeetingUser_VoteDelegatedToID(voteMeetingUserID).Value(ctx)
 		if err != nil {
-			// If the user from the request body does not exist, then delegation
-			// will be 0. This case is handled below.
-			var errDoesNotExist dsfetch.DoesNotExistError
-			if !errors.As(err, &errDoesNotExist) {
-				return fmt.Errorf("fetching delegation from user %d in meeting %d: %w", voteUser, poll.meetingID, err)
-			}
+			return fmt.Errorf("fetching delegation : %w", err)
 		}
 
-		if delegation != requestUser {
+		if !found || delegation != requestUser {
 			return MessageError{ErrNotAllowed, fmt.Sprintf("You can not vote for user %d", voteUser)}
 		}
 		log.Debug("Vote delegation")
 	}
 
-	groupIDs, err := ds.User_GroupIDs(voteUser, poll.meetingID).Value(ctx)
+	groupIDs, err := ds.MeetingUser_GroupIDs(voteMeetingUserID).Value(ctx)
 	if err != nil {
 		return fmt.Errorf("fetching groups of user %d in meeting %d: %w", voteUser, poll.meetingID, err)
 	}
@@ -254,7 +265,7 @@ func (v *Vote) Vote(ctx context.Context, pollID, requestUser int, r io.Reader) (
 	// voteData.Weight is a DecimalField with 6 zeros.
 	var voteWeight string
 	if ds.Meeting_UsersEnableVoteWeight(poll.meetingID).ErrorLater(ctx) {
-		voteWeight = ds.User_VoteWeight(voteUser, poll.meetingID).ErrorLater(ctx)
+		voteWeight = ds.MeetingUser_VoteWeight(voteMeetingUserID).ErrorLater(ctx)
 		if voteWeight == "" {
 			voteWeight = ds.User_DefaultVoteWeight(voteUser).ErrorLater(ctx)
 		}
@@ -380,14 +391,14 @@ func (v *Vote) pollsByBackend(polls []pollConfig) (map[Backend][]int, error) {
 
 // delegatedUserIDs returns all user ids for which the user can vote.
 func delegatedUserIDs(ctx context.Context, fetch *dsfetch.Fetch, userID int) ([]int, error) {
-	meetingIDs, err := fetch.User_VoteDelegationsFromIDsTmpl(userID).Value(ctx)
+	meetingUserIDs, err := fetch.User_MeetingIDs(userID).Value(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("getting vote_delegation_from template field: %w", err)
+		return nil, fmt.Errorf("fetching meeting user: %w", err)
 	}
 
-	meetingUserIDs := make([][]int, len(meetingIDs))
-	for i, mid := range meetingIDs {
-		fetch.User_VoteDelegationsFromIDs(userID, mid).Lazy(&meetingUserIDs[i])
+	meetingUserDelegationsIDs := make([][]int, len(meetingUserIDs))
+	for i, muid := range meetingUserIDs {
+		fetch.MeetingUser_VoteDelegationsFromIDs(muid).Lazy(&meetingUserDelegationsIDs[i])
 	}
 
 	if err := fetch.Execute(ctx); err != nil {
@@ -395,7 +406,7 @@ func delegatedUserIDs(ctx context.Context, fetch *dsfetch.Fetch, userID int) ([]
 	}
 
 	var uids []int
-	for _, muids := range meetingUserIDs {
+	for _, muids := range meetingUserDelegationsIDs {
 		uids = append(uids, muids...)
 	}
 
@@ -509,54 +520,67 @@ func (p pollConfig) preload(ctx context.Context, ds *dsfetch.Fetch) error {
 	ds.Meeting_UsersEnableVoteWeight(p.meetingID)
 	ds.Meeting_UsersEnableVoteDelegations(p.meetingID)
 
-	userIDsList := make([][]int, len(p.groups))
+	meetingUserIDsList := make([][]int, len(p.groups))
 	for i, groupID := range p.groups {
-		ds.Group_UserIDs(groupID).Lazy(&userIDsList[i])
+		ds.Group_MeetingUserIDs(groupID).Lazy(&meetingUserIDsList[i])
 	}
 
-	// First database requesst to get meeting/enable_vote_weight and all users
-	// from all entitled groups.
+	// First database request to get meeting/enable_vote_weight and all
+	// meeting_users from all entitled groups.
 	if err := ds.Execute(ctx); err != nil {
 		return fmt.Errorf("fetching users: %w", err)
 	}
 
-	for _, userIDs := range userIDsList {
-		for _, userID := range userIDs {
-			ds.User_GroupIDs(userID, p.meetingID)
-			ds.User_VoteWeight(userID, p.meetingID)
-			ds.User_DefaultVoteWeight(userID)
-			ds.User_IsPresentInMeetingIDs(userID)
-			ds.User_VoteDelegatedToID(userID, p.meetingID)
+	var userIDs []*int
+	for _, meetingUserIDs := range meetingUserIDsList {
+		for _, muID := range meetingUserIDs {
+			var uid int
+			userIDs = append(userIDs, &uid)
+			ds.MeetingUser_UserID(muID).Lazy(&uid)
+			ds.MeetingUser_GroupIDs(muID)
+			ds.MeetingUser_VoteWeight(muID)
+			ds.MeetingUser_VoteDelegatedToID(muID)
 		}
 	}
 
-	// Second database request to get all users fetched above.
+	// Second database request to get all user ids and meeting_user_data.
 	if err := ds.Execute(ctx); err != nil {
 		return fmt.Errorf("preloading present users: %w", err)
 	}
 
-	var delegatedUserIDs []int
-	for _, userIDs := range userIDsList {
-		for _, userID := range userIDs {
+	var delegatedUserIDs []*int
+	for _, muIDs := range meetingUserIDsList {
+		for _, muID := range muIDs {
 			// This does not send a db request, since the value was fetched in
 			// the block above.
-			delegatedUserID := ds.User_VoteDelegatedToID(userID, p.meetingID).ErrorLater(ctx)
-			if delegatedUserID != 0 {
-				delegatedUserIDs = append(delegatedUserIDs, delegatedUserID)
+			delegatedMeetingUserID, found := ds.MeetingUser_VoteDelegatedToID(muID).ErrorLater(ctx)
+			if found {
+				var uid int
+				delegatedUserIDs = append(delegatedUserIDs, &uid)
+				ds.MeetingUser_UserID(delegatedMeetingUserID).Lazy(&uid)
 			}
 		}
 	}
 
-	for _, userID := range delegatedUserIDs {
-		ds.User_IsPresentInMeetingIDs(userID)
+	// Third database request to get all delegated user ids. Only fetches data
+	// if there are delegates.
+	if err := ds.Execute(ctx); err != nil {
+		return fmt.Errorf("preloading present users: %w", err)
 	}
 
-	// Third database request to get the present state of delegated users that
-	// are not in an entitled group. If there are equivalent users, no request
-	// is send.
-	if err := ds.Execute(ctx); err != nil {
-		return fmt.Errorf("preloading delegated users: %w", err)
+	for _, uID := range userIDs {
+		ds.User_DefaultVoteWeight(*uID)
+		ds.User_IsPresentInMeetingIDs(*uID)
 	}
+	for _, uID := range delegatedUserIDs {
+		ds.User_IsPresentInMeetingIDs(*uID)
+	}
+
+	// Thrid or forth database request to get is present_in_meeting for all users and delegates.
+	if err := ds.Execute(ctx); err != nil {
+		return fmt.Errorf("preloading present users: %w", err)
+	}
+
 	return nil
 }
 

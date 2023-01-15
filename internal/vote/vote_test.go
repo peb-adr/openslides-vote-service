@@ -205,7 +205,13 @@ func TestVoteStartPreloadData(t *testing.T) {
 	
 	group:
 		1:
-			user_ids: [1,2]
+			meeting_user_ids: [10,20]
+
+	meeting_user:
+		10:
+			user_id: 1
+		20:
+			user_id: 2
 	user:
 		1:
 			is_present_in_meeting_ids: [1]
@@ -340,19 +346,26 @@ func TestVoteVote(t *testing.T) {
 
 		user/1:
 			is_present_in_meeting_ids: [1]
-			group_$1_ids: [1]
+			meeting_user_ids: [10]
+
+		meeting_user/10:
+			user_id: 1
+			group_ids: [1]
+			meeting_id: 1
 		`),
 	})
+	ctx := context.Background()
 
 	t.Run("Unknown poll", func(t *testing.T) {
-		err := v.Vote(context.Background(), 1, 1, strings.NewReader(`{"value":"Y"}`))
+		voteData := strings.NewReader(`{"value":"Y"}`)
+		err := v.Vote(ctx, 1, 1, voteData)
 
 		if !errors.Is(err, vote.ErrNotExists) {
 			t.Errorf("Expected ErrNotExists, got: %v", err)
 		}
 	})
 
-	if err := backend.Start(context.Background(), 1); err != nil {
+	if err := backend.Start(ctx, 1); err != nil {
 		t.Fatalf("Starting poll returned unexpected error: %v", err)
 	}
 
