@@ -32,10 +32,11 @@ func TestPreload(t *testing.T) {
 
 			user/50:
 				is_present_in_meeting_ids: [5]
-			
+
 			meeting_user/500:
 				group_ids: [31]
 				user_id: 50
+				meeting_id: 5
 			`,
 			3,
 		},
@@ -58,10 +59,11 @@ func TestPreload(t *testing.T) {
 			user:
 				50:
 					is_present_in_meeting_ids: [5]
-			
+
 			meeting_user/500:
 				user_id: 50
 				group_ids: [30]
+				meeting_id: 5
 			`,
 			3,
 		},
@@ -90,8 +92,10 @@ func TestPreload(t *testing.T) {
 			meeting_user:
 				500:
 					user_id: 50
+					meeting_id: 5
 				510:
 					user_id: 51
+					meeting_id: 5
 			`,
 			3,
 		},
@@ -117,12 +121,14 @@ func TestPreload(t *testing.T) {
 
 				51:
 					is_present_in_meeting_ids: [5]
-			
+
 			meeting_user:
 				500:
 					user_id: 50
+					meeting_id: 5
 				510:
 					user_id: 51
+					meeting_id: 5
 			`,
 			3,
 		},
@@ -159,9 +165,15 @@ func TestPreload(t *testing.T) {
 				500:
 					user_id: 50
 					vote_delegated_to_id: 520
+					meeting_id: 5
 				510:
 					user_id: 51
 					vote_delegated_to_id: 530
+					meeting_id: 5
+				520:
+					user_id: 52
+				530:
+					user_id: 53
 			`,
 			4,
 		},
@@ -176,7 +188,7 @@ func TestPreload(t *testing.T) {
 			}
 
 			dsCount.(*dsmock.Counter).Reset()
-			poll.preload(context.Background(), dsfetch.New(ds))
+			err = poll.preload(context.Background(), dsfetch.New(ds))
 
 			if err != nil {
 				t.Errorf("preload returned: %v", err)

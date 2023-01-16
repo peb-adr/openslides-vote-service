@@ -210,8 +210,10 @@ func TestVoteStartPreloadData(t *testing.T) {
 	meeting_user:
 		10:
 			user_id: 1
+			meeting_id: 5
 		20:
 			user_id: 2
+			meeting_id: 5
 	user:
 		1:
 			is_present_in_meeting_ids: [1]
@@ -439,12 +441,14 @@ func TestVoteVote(t *testing.T) {
 }
 
 func TestVoteNoRequests(t *testing.T) {
-	// Makes sure, that a vote does not do any database requests.
+	// This tests makes sure, that a request to vote does not do any reading
+	// from the database. All values have to be in the cache from pollpreload.
 
 	for _, tt := range []struct {
-		name string
-		data string
-		vote string
+		name              string
+		data              string
+		vote              string
+		expectVotedUserID int
 	}{
 		{
 			"normal vote",
@@ -457,16 +461,21 @@ func TestVoteNoRequests(t *testing.T) {
 				state: started
 				backend: fast
 				type: pseudoanonymous
-			
+
 			meeting/50/users_enable_vote_delegations: true
 
 			user/1:
 				is_present_in_meeting_ids: [50]
-				group_$50_ids: [5]
+				meeting_user_ids: [10]
+			meeting_user/10:
+				meeting_id: 50
+				group_ids: [5]
+				user_id: 1
 
-			group/5/user_ids: [1]
+			group/5/meeting_user_ids: [10]
 			`,
 			`{"value":"Y"}`,
+			1,
 		},
 		{
 			"delegation vote",
@@ -485,13 +494,25 @@ func TestVoteNoRequests(t *testing.T) {
 			user:
 				1:
 					is_present_in_meeting_ids: [50]
+					meeting_user_ids: [10]
 				2:
-					group_$50_ids: [5]
-					vote_delegated_$50_to_id: 1
+					meeting_user_ids: [20]
 
-			group/5/user_ids: [2]
+			meeting_user:
+				10:
+					user_id: 1
+					vote_delegated_from_ids: [20]
+					meeting_id: 50
+				20:
+					meeting_id: 50
+					vote_delegated_to_id: 10
+					group_ids: [5]
+					user_id: 2
+
+			group/5/meeting_user_ids: [20]
 			`,
 			`{"user_id":2,"value":"Y"}`,
+			2,
 		},
 		{
 			"vote weight enabled",
@@ -511,11 +532,18 @@ func TestVoteNoRequests(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [50]
-				group_$50_ids: [5]
+				meeting_user_id: 10
+
+			meeting_user:
+				10:
+					group_ids: [5]
+					user_id: 1
+					meeting_iser: 50
 
 			group/5/user_ids: [1]
 			`,
 			`{"value":"Y"}`,
+			1,
 		},
 		{
 			"vote weight enabled and delegated",
@@ -537,32 +565,42 @@ func TestVoteNoRequests(t *testing.T) {
 				1:
 					is_present_in_meeting_ids: [50]
 				2:
-					group_$50_ids: [5]
-					vote_delegated_$50_to_id: 1
+					meeting_user_ids: [20]
+
+			meeting_user/20:
+				group_ids: [5]
+				meeting_id: 50
+				user_id: 20
+				vote_delegated_to_id: 1
 
 			group/5/user_ids: [2]
 			`,
 			`{"user_id":2,"value":"Y"}`,
+			2,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
 			ds, _ := dsmock.NewMockDatastore(dsmock.YAMLData(tt.data))
 			backend := memory.New()
 			v := vote.New(backend, backend, ds)
 
-			if err := v.Start(context.Background(), 1); err != nil {
+			if err := v.Start(ctx, 1); err != nil {
 				t.Fatalf("Can not start poll: %v", err)
 			}
 
 			ds.ResetRequests()
 
-			if err := v.Vote(context.Background(), 1, 1, strings.NewReader(tt.vote)); err != nil {
+			voteBody := strings.NewReader(tt.vote)
+			if err := v.Vote(ctx, 1, 1, voteBody); err != nil {
 				t.Errorf("Vote returned unexpected error: %v", err)
 			}
 
 			if len(ds.Requests()) != 0 {
 				t.Errorf("Vote send %d requests to the datastore: %v", len(ds.Requests()), ds.Requests())
 			}
+
+			backend.AssertUserHasVoted(t, 1, tt.expectVotedUserID)
 		})
 	}
 }
@@ -590,7 +628,11 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: [1]
+				meeting_user_ids: [10]
+
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1			
 			`,
 			`{"value":"Y"}`,
 
@@ -611,8 +653,11 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 			meeting/1/users_enable_vote_delegations: true				
 
 			user/1:
-				is_present_in_meeting_ids: []
-				group_$1_ids: [1]
+				meeting_user_ids: [10]
+
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1	
 			`,
 			`{"value":"Y"}`,
 
@@ -634,7 +679,11 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: []
+				meeting_user_ids: [10]
+
+			meeting_user/10:
+				group_ids: []
+				meeting_id: 1	
 			`,
 			`{"value":"Y"}`,
 
@@ -656,7 +705,11 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: [1]
+				meeting_user_ids: [10]
+
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1	
 			`,
 			`{"user_id": 1, "value":"Y"}`,
 
@@ -678,7 +731,11 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: [1]
+				meeting_user_ids: [10]
+
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1	
 			`,
 			`{"user_id": 1, "value":"Y"}`,
 
@@ -700,7 +757,11 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: [1]
+				meeting_user_ids: [10]
+
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1	
 			`,
 			`{"user_id": 0, "value":"Y"}`,
 
@@ -722,6 +783,17 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 
 			user/1/is_present_in_meeting_ids: [1]
 			user/2/group_$1_ids: [1]
+
+			user:
+				1:
+					is_present_in_meeting_ids: [1]
+					
+				2:
+					meeting_user_ids: [20]
+
+			meeting_user/20:
+				group_ids: [1]
+				meeting_id: 1	
 			`,
 			`{"user_id": 2, "value":"Y"}`,
 
@@ -741,10 +813,17 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 
 			meeting/1/users_enable_vote_delegations: true
 
-			user/1/is_present_in_meeting_ids: [1]
-			user/2:
-				vote_delegated_$1_to_id: 1
-				group_$1_ids: [1]
+			user:
+				1:
+					is_present_in_meeting_ids: [1]
+					
+				2:
+					meeting_user_ids: [20]
+
+			meeting_user/20:
+				group_ids: [1]
+				meeting_id: 1	
+				vote_delegated_to_id: 1
 			`,
 			`{"user_id": 2, "value":"Y"}`,
 
@@ -764,10 +843,17 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 
 			meeting/1/users_enable_vote_delegations: false
 
-			user/1/is_present_in_meeting_ids: [1]
-			user/2:
-				vote_delegated_$1_to_id: 1
-				group_$1_ids: [1]
+			user:
+				1:
+					is_present_in_meeting_ids: [1]
+					
+				2:
+					meeting_user_ids: [20]
+
+			meeting_user/20:
+				group_ids: [1]
+				meeting_id: 1	
+				vote_delegated_to_id: 1
 			`,
 			`{"user_id": 2, "value":"Y"}`,
 
@@ -787,10 +873,17 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 			
 			meeting/1/users_enable_vote_delegations: true
 
-			user/1/is_present_in_meeting_ids: [1]
-			user/2:
-				vote_delegated_$1_to_id: 1
-				group_$1_ids: []
+			user:
+				1:
+					is_present_in_meeting_ids: [1]
+					
+				2:
+					meeting_user_ids: [20]
+
+			meeting_user/20:
+				group_ids: [0]
+				meeting_id: 1	
+				vote_delegated_to_id: 1
 			`,
 			`{"user_id": 2, "value":"Y"}`,
 
@@ -810,13 +903,17 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 			
 			meeting/1/users_enable_vote_delegations: true
 
-			user/1:
-				is_present_in_meeting_ids: [1]
-				group_$1_ids: []
+			user:
+				1:
+					is_present_in_meeting_ids: [1]
+					
+				2:
+					meeting_user_ids: [20]
 
-			user/2:
-				vote_delegated_$1_to_id: 1
-				group_$1_ids: [1]
+			meeting_user/20:
+				group_ids: [1]
+				meeting_id: 1	
+				vote_delegated_to_id: 1
 			`,
 			`{"user_id": 2, "value":"Y"}`,
 
