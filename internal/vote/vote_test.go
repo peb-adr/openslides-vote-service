@@ -868,7 +868,10 @@ func TestVoteWeight(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: [1]
+				meeting_user_ids: [10]
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1
 			`,
 			"1.000000",
 		},
@@ -887,7 +890,10 @@ func TestVoteWeight(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: [1]
+				meeting_user_ids: [10]
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1
 			`,
 			"1.000000",
 		},
@@ -906,8 +912,11 @@ func TestVoteWeight(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: [1]
+				meeting_user_ids: [10]
 				default_vote_weight: "2.000000"
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1
 			`,
 			"2.000000",
 		},
@@ -926,10 +935,12 @@ func TestVoteWeight(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: [1]
+				meeting_user_ids: [10]
 				default_vote_weight: "2.000000"
-				vote_weight_$: [1]
-				vote_weight_$1: "3.000000"
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1
+				vote_weight: "3.000000"
 			`,
 			"3.000000",
 		},
@@ -948,10 +959,15 @@ func TestVoteWeight(t *testing.T) {
 
 			user/1:
 				is_present_in_meeting_ids: [1]
-				group_$1_ids: [1]
+				meeting_user_ids: [10,11]
 				default_vote_weight: "2.000000"
-				vote_weight_$: [2]
-				vote_weight_$2: "3.000000"
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1
+			meeting_user/11:
+				group_ids: [1]
+				meeting_id: 2
+				vote_weight: "3.000000"
 			`,
 			"2.000000",
 		},
@@ -1021,8 +1037,10 @@ func TestVotedPollsWithDelegation(t *testing.T) {
 		pollmethod: Y
 
 	user/5:
-		vote_delegations_$_from_ids: ["8"]
-		vote_delegations_$8_from_ids: [11,12]
+		meeting_user_ids: [10]
+	meeting_user/10:
+		meeting_id: 8
+		vote_delegations_from_ids: [11,12]
 	`))
 	v := vote.New(backend, backend, ds)
 	backend.Start(context.Background(), 1)

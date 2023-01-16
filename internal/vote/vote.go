@@ -391,7 +391,7 @@ func (v *Vote) pollsByBackend(polls []pollConfig) (map[Backend][]int, error) {
 
 // delegatedUserIDs returns all user ids for which the user can vote.
 func delegatedUserIDs(ctx context.Context, fetch *dsfetch.Fetch, userID int) ([]int, error) {
-	meetingUserIDs, err := fetch.User_MeetingIDs(userID).Value(ctx)
+	meetingUserIDs, err := fetch.User_MeetingUserIDs(userID).Value(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fetching meeting user: %w", err)
 	}
