@@ -172,8 +172,10 @@ func TestPreload(t *testing.T) {
 					meeting_id: 5
 				520:
 					user_id: 52
+					meeting_id: 5
 				530:
 					user_id: 53
+					meeting_id: 5
 			`,
 			4,
 		},
