@@ -5,8 +5,8 @@ github.com/Microsoft/go-winio v0.6.0 h1:slsWYD/zyx7lCXoZVlvQrj0hPTM1HI4+v1sIda2y
 github.com/Microsoft/go-winio v0.6.0/go.mod h1:cTAf44im0RAYeL23bpB+fzCyDH2MJiz2BO69KH/soAE=
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 h1:TngWCqHvy9oXAN6lEVMRuU21PR1EtLVZJmdB18Gu3Rw=
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5/go.mod h1:lmUJ/7eu/Q8D7ML55dXQrVaamCz2vxCfdQBasLZfHKk=
-github.com/OpenSlides/openslides-autoupdate-service v0.4.1-0.20230114215741-db88ae23d78b h1:ubP6I3Y4f1tos5F8fNGSah6QiczA4b/Dcw8ForvQOSc=
-github.com/OpenSlides/openslides-autoupdate-service v0.4.1-0.20230114215741-db88ae23d78b/go.mod h1:TvdncPc/vbn4kxyYAdYTowBoofMcAgMBgwbpkzy4neI=
+github.com/OpenSlides/openslides-autoupdate-service v0.4.1-0.20230117095309-a6bfca58c815 h1:xPTZO73CyJs653EFM4xoBpV1c6N8DJB9lvOxWqp3QQU=
+github.com/OpenSlides/openslides-autoupdate-service v0.4.1-0.20230117095309-a6bfca58c815/go.mod h1:TvdncPc/vbn4kxyYAdYTowBoofMcAgMBgwbpkzy4neI=
 github.com/alecthomas/assert/v2 v2.1.0 h1:tbredtNcQnoSd3QBhQWI7QZ3XHOVkw1Moklp2ojoH/0=
 github.com/alecthomas/kong v0.7.1 h1:azoTh0IOfwlAX3qN9sHWTxACE2oV8Bg2gAwBsMwDQY4=
 github.com/alecthomas/kong v0.7.1/go.mod h1:n1iCIO2xS46oE8ZfYCNDqdR0b0wZNrXAIAqro/2132U=
