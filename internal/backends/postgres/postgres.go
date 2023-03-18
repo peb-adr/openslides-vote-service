@@ -27,15 +27,11 @@ type Backend struct {
 }
 
 // New creates a new connection pool.
-func New(ctx context.Context, url string, password string) (*Backend, error) {
-	conf, err := pgxpool.ParseConfig(url)
+func New(ctx context.Context, connString string) (*Backend, error) {
+	conf, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return nil, fmt.Errorf("invalid connection url: %w", err)
 	}
-
-	// Set the password. It could contains letters that are not supported by
-	// ParseConfig
-	conf.ConnConfig.Password = password
 
 	// Fix issue with gbBouncer. The documentation says, that this make the
 	// connection slower. We have to test the performance. Maybe it is better to
@@ -432,7 +428,7 @@ func (u *userIDList) add(userID int32) error {
 	ints := []int32(*u)
 	idx := sort.Search(len(ints), func(i int) bool { return ints[i] >= userID })
 	if idx < len(ints) && ints[idx] == userID {
-		return doupleVoteError{fmt.Errorf("User has already voted")}
+		return doubleVoteError{fmt.Errorf("User has already voted")}
 	}
 
 	// Insert the index at the correct order.
@@ -458,11 +454,11 @@ type doesNotExistError struct {
 
 func (doesNotExistError) DoesNotExist() {}
 
-type doupleVoteError struct {
+type doubleVoteError struct {
 	error
 }
 
-func (doupleVoteError) DoupleVote() {}
+func (doubleVoteError) DoubleVote() {}
 
 type stoppedError struct {
 	error
