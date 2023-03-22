@@ -653,134 +653,134 @@ func TestVoteDelegationAndGroup(t *testing.T) {
 
 		expectVotedUserID int
 	}{
-		// {
-		// 	"Not delegated",
-		// 	`
-		// 	poll/1:
-		// 		meeting_id: 1
-		// 		entitled_group_ids: [1]
-		// 		pollmethod: Y
-		// 		global_yes: true
-		// 		backend: fast
-		// 		type: pseudoanonymous
+		{
+			"Not delegated",
+			`
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+				backend: fast
+				type: pseudoanonymous
 
-		// 	meeting/1/users_enable_vote_delegations: true
+			meeting/1/users_enable_vote_delegations: true
 
-		// 	user/1:
-		// 		is_present_in_meeting_ids: [1]
-		// 		meeting_user_ids: [10]
+			user/1:
+				is_present_in_meeting_ids: [1]
+				meeting_user_ids: [10]
 
-		// 	meeting_user/10:
-		// 		group_ids: [1]
-		// 		meeting_id: 1
-		// 	`,
-		// 	`{"value":"Y"}`,
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1
+			`,
+			`{"value":"Y"}`,
 
-		// 	1,
-		// },
+			1,
+		},
 
-		// {
-		// 	"Not delegated not present",
-		// 	`
-		// 	poll/1:
-		// 		meeting_id: 1
-		// 		entitled_group_ids: [1]
-		// 		pollmethod: Y
-		// 		global_yes: true
-		// 		backend: fast
-		// 		type: pseudoanonymous
+		{
+			"Not delegated not present",
+			`
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+				backend: fast
+				type: pseudoanonymous
 
-		// 	meeting/1/users_enable_vote_delegations: true
+			meeting/1/users_enable_vote_delegations: true
 
-		// 	user/1:
-		// 		meeting_user_ids: [10]
+			user/1:
+				meeting_user_ids: [10]
 
-		// 	meeting_user/10:
-		// 		group_ids: [1]
-		// 		meeting_id: 1
-		// 	`,
-		// 	`{"value":"Y"}`,
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1
+			`,
+			`{"value":"Y"}`,
 
-		// 	0,
-		// },
+			0,
+		},
 
-		// {
-		// 	"Not delegated not in group",
-		// 	`
-		// 	poll/1:
-		// 		meeting_id: 1
-		// 		entitled_group_ids: [1]
-		// 		pollmethod: Y
-		// 		global_yes: true
-		// 		backend: fast
-		// 		type: pseudoanonymous
+		{
+			"Not delegated not in group",
+			`
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+				backend: fast
+				type: pseudoanonymous
 
-		// 	meeting/1/users_enable_vote_delegations: true
+			meeting/1/users_enable_vote_delegations: true
 
-		// 	user/1:
-		// 		is_present_in_meeting_ids: [1]
-		// 		meeting_user_ids: [10]
+			user/1:
+				is_present_in_meeting_ids: [1]
+				meeting_user_ids: [10]
 
-		// 	meeting_user/10:
-		// 		group_ids: []
-		// 		meeting_id: 1
-		// 	`,
-		// 	`{"value":"Y"}`,
+			meeting_user/10:
+				group_ids: []
+				meeting_id: 1
+			`,
+			`{"value":"Y"}`,
 
-		// 	0,
-		// },
+			0,
+		},
 
-		// {
-		// 	"Vote for self",
-		// 	`
-		// 	poll/1:
-		// 		meeting_id: 1
-		// 		entitled_group_ids: [1]
-		// 		pollmethod: Y
-		// 		global_yes: true
-		// 		backend: fast
-		// 		type: pseudoanonymous
+		{
+			"Vote for self",
+			`
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+				backend: fast
+				type: pseudoanonymous
 
-		// 	meeting/1/users_enable_vote_delegations: true
+			meeting/1/users_enable_vote_delegations: true
 
-		// 	user/1:
-		// 		is_present_in_meeting_ids: [1]
-		// 		meeting_user_ids: [10]
+			user/1:
+				is_present_in_meeting_ids: [1]
+				meeting_user_ids: [10]
 
-		// 	meeting_user/10:
-		// 		group_ids: [1]
-		// 		meeting_id: 1
-		// 	`,
-		// 	`{"user_id": 1, "value":"Y"}`,
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1
+			`,
+			`{"user_id": 1, "value":"Y"}`,
 
-		// 	1,
-		// },
+			1,
+		},
 
-		// {
-		// 	"Vote for self not activated",
-		// 	`
-		// 	poll/1:
-		// 		meeting_id: 1
-		// 		entitled_group_ids: [1]
-		// 		pollmethod: Y
-		// 		global_yes: true
-		// 		backend: fast
-		// 		type: pseudoanonymous
+		{
+			"Vote for self not activated",
+			`
+			poll/1:
+				meeting_id: 1
+				entitled_group_ids: [1]
+				pollmethod: Y
+				global_yes: true
+				backend: fast
+				type: pseudoanonymous
 
-		// 	meeting/1/users_enable_vote_delegations: false
+			meeting/1/users_enable_vote_delegations: false
 
-		// 	user/1:
-		// 		is_present_in_meeting_ids: [1]
-		// 		meeting_user_ids: [10]
+			user/1:
+				is_present_in_meeting_ids: [1]
+				meeting_user_ids: [10]
 
-		// 	meeting_user/10:
-		// 		group_ids: [1]
-		// 		meeting_id: 1
-		// 	`,
-		// 	`{"user_id": 1, "value":"Y"}`,
+			meeting_user/10:
+				group_ids: [1]
+				meeting_id: 1
+			`,
+			`{"user_id": 1, "value":"Y"}`,
 
-		// 	1,
-		// },
+			1,
+		},
 
 		{
 			"Vote for anonymous",
@@ -1171,6 +1171,78 @@ func TestVoteWeight(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestItLikeBackend(t *testing.T) {
+	ctx := context.Background()
+	backend := memory.New()
+
+	ds := dsmock.Stub(dsmock.YAMLData(`---
+	organization/1/enable_electronic_voting: true
+	meeting/1:
+		name: my meeting
+		poll_couple_countdown: true
+		poll_countdown_id: 11
+		is_active_in_organization_id: 1
+		group_ids: [1]
+		meeting_user_ids: [11]
+	
+	projector_countdown/11:
+		default_time: 60
+		running: false
+		countdown_time: 60
+		meeting_id: 1
+
+	group/1/meeting_user_ids: [11]
+
+	option:
+		1:
+			meeting_id: 1
+			poll_id: 1
+		2:
+			meeting_id: 1
+			poll_id: 1
+	
+	user/1:
+		is_present_in_meeting_ids: [1]
+		meeting_user_ids: [11]
+
+	meeting_user/11:
+		meeting_id: 1
+		user_id: 1
+		group_ids: [1]
+	
+	assignment/1:
+		title: test_assignment_tcLT59bmXrXif424Qw7K
+		open_posts: 1
+		meeting_id: 1
+	
+	poll/1:
+		content_object_id: assignment/1
+		title: test_title_04k0y4TwPLpJKaSvIGm1
+		state: started
+		meeting_id: 1
+		option_ids: [1, 2]
+		entitled_group_ids: [1]
+		votesinvalid: "0.000000"
+		votesvalid: "0.000000"
+		votescast: "0.000000"
+		backend: fast
+		pollmethod: YNA
+		type: named
+		
+	`))
+
+	v := vote.New(backend, backend, ds)
+	if err := backend.Start(ctx, 1); err != nil {
+		t.Fatalf("bakckend.Start: %v", err)
+	}
+
+	if err := v.Vote(ctx, 1, 1, strings.NewReader(`{"value": {"1": "Y"}}`)); err != nil {
+		t.Fatalf("vote returned unexpected error: %v", err)
+	}
+
+	backend.AssertUserHasVoted(t, 1, 1)
 }
 
 func TestVotedPolls(t *testing.T) {
