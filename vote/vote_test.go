@@ -1242,7 +1242,7 @@ func TestItLikeBackend(t *testing.T) {
 		
 	`))
 
-	v := vote.New(backend, backend, ds)
+	v, _, _ := vote.New(ctx, backend, backend, ds, true)
 	if err := backend.Start(ctx, 1); err != nil {
 		t.Fatalf("bakckend.Start: %v", err)
 	}
