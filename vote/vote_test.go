@@ -1154,7 +1154,7 @@ func TestItLikeBackend(t *testing.T) {
 	ctx := context.Background()
 	backend := memory.New()
 
-	ds := dsmock.Stub(dsmock.YAMLData(`---
+	ds := dsmock.NewFlow(dsmock.YAMLData(`---
 	organization/1/enable_electronic_voting: true
 	meeting/1:
 		name: my meeting
