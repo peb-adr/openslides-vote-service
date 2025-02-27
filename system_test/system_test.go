@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/OpenSlides/openslides-go/auth/authtest"
-	"github.com/OpenSlides/openslides-go/datastore/dsmock"
+	"github.com/peb-adr/openslides-go/auth/authtest"
+	"github.com/peb-adr/openslides-go/datastore/dsmock"
 )
 
 const (

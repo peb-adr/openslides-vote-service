@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/OpenSlides/openslides-go/environment"
+	"github.com/peb-adr/openslides-go/environment"
 	"github.com/OpenSlides/openslides-vote-service/backend/memory"
 	"github.com/OpenSlides/openslides-vote-service/backend/postgres"
 	"github.com/OpenSlides/openslides-vote-service/backend/redis"
