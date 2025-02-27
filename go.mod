@@ -21,7 +21,7 @@ require (
 	github.com/docker/docker v27.1.1+incompatible // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/goccy/go-yaml v1.15.22 // indirect
+	github.com/goccy/go-yaml v1.15.23 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.1 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -35,6 +35,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/opencontainers/runc v1.1.14 // indirect
 	github.com/ostcar/topic v0.4.1 // indirect
+	github.com/peb-adr/openslides-go v0.0.2-0.20250227160635-6d88fb66048f // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect

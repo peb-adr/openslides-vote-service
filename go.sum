@@ -37,6 +37,7 @@ github.com/go-sql-driver/mysql v1.8.1 h1:LedoTUt/eveggdHS9qUFC1EFSa8bU2+1pZjSRpv
 github.com/go-sql-driver/mysql v1.8.1/go.mod h1:wEBSXgmK//2ZFJyE+qWnIsVGmvmEKlqwuVSjsCm7DZg=
 github.com/goccy/go-yaml v1.15.22 h1:iQI1hvCoiYYiVFq76P4AI8ImgDOfgiyKnl/AWjK8/gA=
 github.com/goccy/go-yaml v1.15.22/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7LkFRi1kA=
+github.com/goccy/go-yaml v1.15.23/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7LkFRi1kA=
 github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
 github.com/gogo/protobuf v1.3.2/go.mod h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=
 github.com/golang-jwt/jwt/v4 v4.5.1 h1:JdqV9zKUdtaa9gdPlywC3aeoEsR681PlKC+4F5gQgeo=
@@ -81,6 +82,8 @@ github.com/ory/dockertest/v3 v3.11.0 h1:OiHcxKAvSDUwsEVh2BjxQQc/5EHz9n0va9awCtNG
 github.com/ory/dockertest/v3 v3.11.0/go.mod h1:VIPxS1gwT9NpPOrfD3rACs8Y9Z7yhzO4SB194iUDnUI=
 github.com/ostcar/topic v0.4.1 h1:ORxFOS8BAVKRaeAr3lwYrETQAuKojCUxzWOoBn0CQTw=
 github.com/ostcar/topic v0.4.1/go.mod h1:13aefloBRYAhhb4BWjwb0hMRNx+9QSbdyCJ631ioCW4=
+github.com/peb-adr/openslides-go v0.0.2-0.20250227160635-6d88fb66048f h1:GUj45WLv1WdJZQw4GRtDXESIbEVoxZSUidvbbSE/2kE=
+github.com/peb-adr/openslides-go v0.0.2-0.20250227160635-6d88fb66048f/go.mod h1:88pCdtuqMNCSyxfkaIy0e4ghIxOcjuOV5jp7px0f45c=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
