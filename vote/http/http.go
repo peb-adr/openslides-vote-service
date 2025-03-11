@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/OpenSlides/openslides-go/environment"
+	"github.com/peb-adr/openslides-go/environment"
 	"github.com/OpenSlides/openslides-vote-service/log"
 	"github.com/OpenSlides/openslides-vote-service/vote"
 )

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/OpenSlides/openslides-go/datastore/dsfetch"
-	"github.com/OpenSlides/openslides-go/datastore/dsmock"
+	"github.com/peb-adr/openslides-go/datastore/dsfetch"
+	"github.com/peb-adr/openslides-go/datastore/dsmock"
 )
 
 func TestPreload(t *testing.T) {
